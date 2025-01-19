@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
 License: Simplified BSD (see COPYING.BSD) */
 
 /*
@@ -27,7 +27,6 @@ The intent is to standardize how we do it.
 #pragma warning(disable : 4091)
 #include <dbghelp.h>
 #pragma warning(pop)
-#include <tlhelp32.h>
 
 #define API_DECLARATION(name) extern Sig_##name Dyn##name;
 
@@ -65,11 +64,16 @@ NORMALIZ_API_LIST(API_DECLARATION)
 #define KERNEL32_API_LIST(V)    \
     V(SetProcessDEPPolicy)      \
     V(IsWow64Process)           \
+    V(GetProcessInformation)    \
     V(SetDllDirectoryW)         \
     V(SetDefaultDllDirectories) \
     V(RtlCaptureContext)        \
     V(RtlCaptureStackBackTrace) \
+    V(SetThreadDescription)     \
     V(SetProcessMitigationPolicy)
+
+// TODO: only available in 20348, not yet present in SDK?
+// V(GetTempPath2W)
 
 KERNEL32_API_LIST(API_DECLARATION2)
 
@@ -103,7 +107,8 @@ UXTHEME_API_LIST(API_DECLARATION2)
     V(DwmIsCompositionEnabled)      \
     V(DwmExtendFrameIntoClientArea) \
     V(DwmDefWindowProc)             \
-    V(DwmGetWindowAttribute)
+    V(DwmGetWindowAttribute)        \
+    V(DwmSetWindowAttribute)
 
 DWMAPI_API_LIST(API_DECLARATION2)
 
@@ -147,8 +152,11 @@ namespace dwm {
 
 BOOL IsCompositionEnabled();
 HRESULT ExtendFrameIntoClientArea(HWND hwnd, const MARGINS* pMarInset);
-BOOL DefWindowProc_(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* plResult);
+BOOL DefaultWindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* plResult);
 HRESULT GetWindowAttribute(HWND hwnd, DWORD dwAttribute, void* pvAttribute, DWORD cbAttribute);
+HRESULT SetWindowAttribute(HWND hwnd, DWORD dwAttribute, void* pvAttribute, DWORD cbAttribute);
+HRESULT SetCaptionColor(HWND hwnd, COLORREF col);
+
 }; // namespace dwm
 
 // Touch Gesture API, only available in Windows 7

@@ -1,11 +1,12 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 // port of https://gitlab.com/stone.code/goey
 
 const int Inf = std::numeric_limits<int>::max();
 
-RECT RectToRECT(Rect);
+void PositionRB(const Rect& container, Rect& r);
+void MoveXY(Rect& r, int x, int y);
 
 int Clamp(int v, int vmin, int vmax);
 int Scale(int v, i64 num, i64 den);
@@ -15,26 +16,26 @@ struct Constraints {
     Size min{};
     Size max{};
 
-    [[nodiscard]] Size Constrain(Size) const;
-    [[nodiscard]] Size ConstrainAndAttemptToPreserveAspectRatio(Size) const;
-    [[nodiscard]] int ConstrainHeight(int height) const;
-    [[nodiscard]] int ConstrainWidth(int width) const;
-    [[nodiscard]] bool HasBoundedHeight() const;
-    [[nodiscard]] bool HasBoundedWidth() const;
-    [[nodiscard]] bool HasTightWidth() const;
-    [[nodiscard]] bool HasTightHeight() const;
-    [[nodiscard]] Constraints Inset(int width, int height) const;
-    [[nodiscard]] bool IsBounded() const;
-    [[nodiscard]] bool IsNormalized() const;
-    [[nodiscard]] bool IsTight() const;
-    [[nodiscard]] bool IsSatisfiedBy(Size) const;
-    [[nodiscard]] bool IsZero() const;
-    [[nodiscard]] Constraints Loosen() const;
-    [[nodiscard]] Constraints LoosenHeight() const;
-    [[nodiscard]] Constraints LoosenWidth() const;
-    [[nodiscard]] Constraints Tighten(Size) const;
-    [[nodiscard]] Constraints TightenHeight(int height) const;
-    [[nodiscard]] Constraints TightenWidth(int width) const;
+    Size Constrain(Size) const;
+    Size ConstrainAndAttemptToPreserveAspectRatio(Size) const;
+    int ConstrainHeight(int height) const;
+    int ConstrainWidth(int width) const;
+    bool HasBoundedHeight() const;
+    bool HasBoundedWidth() const;
+    bool HasTightWidth() const;
+    bool HasTightHeight() const;
+    Constraints Inset(int width, int height) const;
+    bool IsBounded() const;
+    bool IsNormalized() const;
+    bool IsTight() const;
+    bool IsSatisfiedBy(Size) const;
+    bool IsZero() const;
+    Constraints Loosen() const;
+    Constraints LoosenHeight() const;
+    Constraints LoosenWidth() const;
+    Constraints Tighten(Size) const;
+    Constraints TightenHeight(int height) const;
+    Constraints TightenWidth(int width) const;
 };
 
 Constraints ExpandInf();
@@ -44,7 +45,7 @@ Constraints Loose(Size size);
 Constraints Tight(Size size);
 Constraints TightHeight(int height);
 
-using NeedLayout = std::function<void()>;
+using NeedLayout = Func0;
 
 // works like css visibility property
 enum class Visibility {
@@ -57,7 +58,6 @@ enum class Visibility {
 
 struct ILayout {
     virtual ~ILayout() = default;
-    ;
     virtual Kind GetKind() = 0;
     virtual void SetVisibility(Visibility) = 0;
     virtual Visibility GetVisibility() = 0;
@@ -69,7 +69,7 @@ struct ILayout {
 
 bool IsCollapsed(ILayout*);
 
-struct LayoutBase : public ILayout {
+struct LayoutBase : ILayout {
     Kind kind = nullptr;
     // allows easy way to hide / show elements
     // without rebuilding the whole layout
@@ -83,6 +83,7 @@ struct LayoutBase : public ILayout {
     Kind GetKind() override;
     void SetVisibility(Visibility) override;
     Visibility GetVisibility() override;
+    void SetBounds(Rect) override;
 };
 
 bool IsLayoutOfKind(ILayout*, Kind);
@@ -106,6 +107,8 @@ struct Padding : LayoutBase {
 
     Padding(ILayout*, const Insets&);
     ~Padding() override;
+
+    // ILayout
     Size Layout(Constraints bc) override;
     int MinIntrinsicHeight(int width) override;
     int MinIntrinsicWidth(int height) override;
@@ -147,7 +150,7 @@ enum class CrossAxisAlign : u8 {
 
 struct boxElementInfo {
     ILayout* layout = nullptr;
-    Size size = {};
+    Size size{};
     int flex = 0;
 };
 
@@ -160,6 +163,8 @@ struct VBox : LayoutBase {
 
     VBox();
     ~VBox() override;
+
+    // ILayout
     Size Layout(Constraints bc) override;
     int MinIntrinsicHeight(int width) override;
     int MinIntrinsicWidth(int height) override;
@@ -183,6 +188,8 @@ struct HBox : LayoutBase {
     int totalFlex = 0;
 
     ~HBox() override;
+
+    // ILayout
     Size Layout(Constraints bc) override;
     int MinIntrinsicHeight(int width) override;
     int MinIntrinsicWidth(int height) override;
@@ -214,6 +221,8 @@ struct Align : LayoutBase {
 
     explicit Align(ILayout*);
     ~Align() override;
+
+    // ILayout
     Size Layout(Constraints bc) override;
     int MinIntrinsicHeight(int width) override;
     int MinIntrinsicWidth(int height) override;
@@ -228,10 +237,44 @@ struct Spacer : LayoutBase {
 
     Spacer(int, int);
     ~Spacer() override;
+
+    // ILayout
     Size Layout(Constraints bc) override;
     int MinIntrinsicHeight(int width) override;
     int MinIntrinsicWidth(int height) override;
     void SetBounds(Rect) override;
+};
+
+// TODO: support global padding. Could use Inset but it's inefficient
+// for large tables to allocate additional object for each cell
+// TODO: support border width / height
+struct TableLayout : LayoutBase {
+    int cols = 0;
+    int rows = 0;
+
+    struct Cell {
+        ILayout* child;
+        // TODO: per-cell layout data
+        Size elSize;
+    };
+
+    Cell* cells = nullptr; // cols * rows
+    int* maxColWidths = nullptr;
+
+    explicit TableLayout();
+    ~TableLayout() override;
+
+    Size Layout(Constraints bc) override;
+    int MinIntrinsicHeight(int width) override;
+    int MinIntrinsicWidth(int height) override;
+    void SetBounds(Rect) override;
+
+    void SetSize(int rows, int cols);
+    void SetCell(int row, int col, ILayout* el);
+    ILayout* GetCell(int row, int col);
+
+    // private
+    int CellIdx(int row, int col);
 };
 
 void LayoutAndSizeToContent(ILayout* layout, int minDx, int minDy, HWND hwnd);

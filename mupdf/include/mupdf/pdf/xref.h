@@ -1,5 +1,29 @@
+// Copyright (C) 2004-2022 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 39 Mesa Street, Suite 108A, San Francisco,
+// CA 94129, USA, for further information.
+
 #ifndef MUPDF_PDF_XREF_H
 #define MUPDF_PDF_XREF_H
+
+#include "mupdf/pdf/document.h"
 
 /*
 	Allocate a slot in the xref table and return a fresh unused object number.
@@ -69,11 +93,34 @@ struct pdf_xref
 	int64_t end_ofs; /* file offset to end of xref */
 };
 
+/**
+	Retrieve the pdf_xref_entry for a given object.
+
+	This can cause xref reorganisations (solidifications etc) due to
+	repairs, so all held pdf_xref_entries should be considered
+	invalid after this call (other than the returned one).
+*/
 pdf_xref_entry *pdf_cache_object(fz_context *ctx, pdf_document *doc, int num);
 
 int pdf_count_objects(fz_context *ctx, pdf_document *doc);
+
+/**
+	Resolve an indirect object (or chain of objects).
+
+	This can cause xref reorganisations (solidifications etc) due to
+	repairs, so all held pdf_xref_entries should be considered
+	invalid after this call (other than the returned one).
+*/
 pdf_obj *pdf_resolve_indirect(fz_context *ctx, pdf_obj *ref);
 pdf_obj *pdf_resolve_indirect_chain(fz_context *ctx, pdf_obj *ref);
+
+/**
+	Load a given object.
+
+	This can cause xref reorganisations (solidifications etc) due to
+	repairs, so all held pdf_xref_entries should be considered
+	invalid after this call (other than the returned one).
+*/
 pdf_obj *pdf_load_object(fz_context *ctx, pdf_document *doc, int num);
 pdf_obj *pdf_load_unencrypted_object(fz_context *ctx, pdf_document *doc, int num);
 
@@ -108,7 +155,7 @@ fz_stream *pdf_open_stream(fz_context *ctx, pdf_obj *ref);
 	constraining to stream length, and without decryption.
 */
 fz_stream *pdf_open_inline_stream(fz_context *ctx, pdf_document *doc, pdf_obj *stmobj, int length, fz_stream *chain, fz_compression_params *params);
-fz_compressed_buffer *pdf_load_compressed_stream(fz_context *ctx, pdf_document *doc, int num);
+fz_compressed_buffer *pdf_load_compressed_stream(fz_context *ctx, pdf_document *doc, int num, size_t worst_case);
 void pdf_load_compressed_inline_image(fz_context *ctx, pdf_document *doc, pdf_obj *dict, int length, fz_stream *cstm, int indexed, fz_compressed_image *image);
 fz_stream *pdf_open_stream_with_offset(fz_context *ctx, pdf_document *doc, int num, pdf_obj *dict, int64_t stm_ofs);
 fz_stream *pdf_open_contents_stream(fz_context *ctx, pdf_document *doc, pdf_obj *obj);
@@ -117,6 +164,8 @@ int pdf_version(fz_context *ctx, pdf_document *doc);
 pdf_obj *pdf_trailer(fz_context *ctx, pdf_document *doc);
 void pdf_set_populating_xref_trailer(fz_context *ctx, pdf_document *doc, pdf_obj *trailer);
 int pdf_xref_len(fz_context *ctx, pdf_document *doc);
+
+pdf_obj *pdf_metadata(fz_context *ctx, pdf_document *doc);
 
 /*
 	Used while reading the individual xref sections from a file.
@@ -129,8 +178,31 @@ pdf_xref_entry *pdf_get_populating_xref_entry(fz_context *ctx, pdf_document *doc
 	This will never throw anything, or return NULL if it is
 	only asked to return objects in range within a 'solid'
 	xref.
+
+	This may "solidify" the xref (so can cause allocations).
 */
 pdf_xref_entry *pdf_get_xref_entry(fz_context *ctx, pdf_document *doc, int i);
+
+/*
+	Map a function across all xref entries in a document.
+*/
+void pdf_xref_entry_map(fz_context *ctx, pdf_document *doc, void (*fn)(fz_context *, pdf_xref_entry *, int i, pdf_document *doc, void *), void *arg);
+
+
+/*
+	Used after loading a document to access entries.
+
+	This will never throw anything, or return NULL if it is
+	only asked to return objects in range within a 'solid'
+	xref.
+
+	This will never "solidify" the xref, so no entry may be found
+	(NULL will be returned) for free entries.
+
+	Called with a valid i, this will never try/catch or throw.
+*/
+pdf_xref_entry *pdf_get_xref_entry_no_change(fz_context *ctx, pdf_document *doc, int i);
+pdf_xref_entry *pdf_get_xref_entry_no_null(fz_context *ctx, pdf_document *doc, int i);
 void pdf_replace_xref(fz_context *ctx, pdf_document *doc, pdf_xref_entry *entries, int n);
 void pdf_forget_xref(fz_context *ctx, pdf_document *doc);
 pdf_xref_entry *pdf_get_incremental_xref_entry(fz_context *ctx, pdf_document *doc, int i);
@@ -144,6 +216,7 @@ void pdf_xref_store_unsaved_signature(fz_context *ctx, pdf_document *doc, pdf_ob
 void pdf_xref_remove_unsaved_signature(fz_context *ctx, pdf_document *doc, pdf_obj *field);
 int pdf_xref_obj_is_unsaved_signature(pdf_document *doc, pdf_obj *obj);
 void pdf_xref_ensure_local_object(fz_context *ctx, pdf_document *doc, int num);
+int pdf_obj_is_incremental(fz_context *ctx, pdf_obj *obj);
 
 void pdf_repair_xref(fz_context *ctx, pdf_document *doc);
 void pdf_repair_obj_stms(fz_context *ctx, pdf_document *doc);
@@ -158,7 +231,7 @@ void pdf_mark_xref(fz_context *ctx, pdf_document *doc);
 void pdf_clear_xref(fz_context *ctx, pdf_document *doc);
 void pdf_clear_xref_to_mark(fz_context *ctx, pdf_document *doc);
 
-int pdf_repair_obj(fz_context *ctx, pdf_document *doc, pdf_lexbuf *buf, int64_t *stmofsp, int *stmlenp, pdf_obj **encrypt, pdf_obj **id, pdf_obj **page, int64_t *tmpofs, pdf_obj **root);
+int pdf_repair_obj(fz_context *ctx, pdf_document *doc, pdf_lexbuf *buf, int64_t *stmofsp, int64_t *stmlenp, pdf_obj **encrypt, pdf_obj **id, pdf_obj **page, int64_t *tmpofs, pdf_obj **root);
 
 pdf_obj *pdf_progressive_advance(fz_context *ctx, pdf_document *doc, int pagenum);
 

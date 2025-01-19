@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 // those are defined in SumatraStartup.cpp
@@ -8,14 +8,13 @@
 extern bool gIsDebugBuild;
 extern bool gIsAsanBuild;
 extern bool gIsPreReleaseBuild;
-extern bool gOwnerDrawMenu;
+extern bool gIsStoreBuild;
 extern bool gDisableDocumentRestrictions;
 extern const char* builtOn;
 extern const char* currentVersion; // e.g. "3.2.1138"
-extern const char* gitSha1;
+extern const char* gitCommidId;
 extern const char* preReleaseVersion;
 
-const WCHAR* GetAppNameTemp();
-const WCHAR* GetExeNameTemp();
+constexpr const char* kExeName = "SumatraPDF.exe";
 
 int GetAppIconID();

@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 39 Mesa Street, Suite 108A, San Francisco,
+// CA 94129, USA, for further information.
+
 #include "mupdf/fitz.h"
 #include "mupdf/pdf.h"
 
@@ -101,7 +123,7 @@ pdf_new_stext_page_from_annot(fz_context *ctx, pdf_annot *annot, const fz_stext_
 }
 
 fz_pixmap *
-pdf_new_pixmap_from_page_contents_with_separations_and_usage(fz_context *ctx, pdf_page *page, fz_matrix ctm, fz_colorspace *cs, fz_separations *seps, int alpha, const char *usage)
+pdf_new_pixmap_from_page_contents_with_separations_and_usage(fz_context *ctx, pdf_page *page, fz_matrix ctm, fz_colorspace *cs, fz_separations *seps, int alpha, const char *usage, fz_box_type box)
 {
 	fz_rect rect;
 	fz_irect bbox;
@@ -110,7 +132,7 @@ pdf_new_pixmap_from_page_contents_with_separations_and_usage(fz_context *ctx, pd
 
 	fz_var(dev);
 
-	rect = pdf_bound_page(ctx, page);
+	rect = pdf_bound_page(ctx, page, box);
 	rect = fz_transform_rect(rect, ctm);
 	bbox = fz_round_rect(rect);
 
@@ -130,8 +152,8 @@ pdf_new_pixmap_from_page_contents_with_separations_and_usage(fz_context *ctx, pd
 		fz_catch(ctx)
 		{
 			dev->close_device = NULL; /* aborted run, don't warn about unclosed device */
-			if (fz_caught(ctx) != FZ_ERROR_ABORT)
-				fz_rethrow(ctx);
+			fz_rethrow_unless(ctx, FZ_ERROR_ABORT);
+			fz_ignore_error(ctx);
 		}
 		fz_close_device(ctx, dev);
 	}
@@ -149,13 +171,13 @@ pdf_new_pixmap_from_page_contents_with_separations_and_usage(fz_context *ctx, pd
 }
 
 fz_pixmap *
-pdf_new_pixmap_from_page_contents_with_usage(fz_context *ctx, pdf_page *page, fz_matrix ctm, fz_colorspace *cs, int alpha, const char *usage)
+pdf_new_pixmap_from_page_contents_with_usage(fz_context *ctx, pdf_page *page, fz_matrix ctm, fz_colorspace *cs, int alpha, const char *usage, fz_box_type box)
 {
-	return pdf_new_pixmap_from_page_contents_with_separations_and_usage(ctx, page, ctm, cs, NULL, alpha, usage);
+	return pdf_new_pixmap_from_page_contents_with_separations_and_usage(ctx, page, ctm, cs, NULL, alpha, usage, box);
 }
 
 fz_pixmap *
-pdf_new_pixmap_from_page_with_separations_and_usage(fz_context *ctx, pdf_page *page, fz_matrix ctm, fz_colorspace *cs, fz_separations *seps, int alpha, const char *usage)
+pdf_new_pixmap_from_page_with_separations_and_usage(fz_context *ctx, pdf_page *page, fz_matrix ctm, fz_colorspace *cs, fz_separations *seps, int alpha, const char *usage, fz_box_type box)
 {
 	fz_rect rect;
 	fz_irect bbox;
@@ -164,7 +186,7 @@ pdf_new_pixmap_from_page_with_separations_and_usage(fz_context *ctx, pdf_page *p
 
 	fz_var(dev);
 
-	rect = pdf_bound_page(ctx, page);
+	rect = pdf_bound_page(ctx, page, box);
 	rect = fz_transform_rect(rect, ctm);
 	bbox = fz_round_rect(rect);
 
@@ -185,8 +207,8 @@ pdf_new_pixmap_from_page_with_separations_and_usage(fz_context *ctx, pdf_page *p
 		fz_catch(ctx)
 		{
 			dev->close_device = NULL; /* aborted run, don't warn about unclosed device */
-			if (fz_caught(ctx) != FZ_ERROR_ABORT)
-				fz_rethrow(ctx);
+			fz_rethrow_unless(ctx, FZ_ERROR_ABORT);
+			fz_ignore_error(ctx);
 		}
 		fz_close_device(ctx, dev);
 	}
@@ -204,7 +226,7 @@ pdf_new_pixmap_from_page_with_separations_and_usage(fz_context *ctx, pdf_page *p
 }
 
 fz_pixmap *
-pdf_new_pixmap_from_page_with_usage(fz_context *ctx, pdf_page *page, fz_matrix ctm, fz_colorspace *cs, int alpha, const char *usage)
+pdf_new_pixmap_from_page_with_usage(fz_context *ctx, pdf_page *page, fz_matrix ctm, fz_colorspace *cs, int alpha, const char *usage, fz_box_type box)
 {
-	return pdf_new_pixmap_from_page_with_separations_and_usage(ctx, page, ctm, cs, NULL, alpha, usage);
+	return pdf_new_pixmap_from_page_with_separations_and_usage(ctx, page, ctm, cs, NULL, alpha, usage, box);
 }

@@ -35,6 +35,12 @@ endif
 
 include $(MUPDF_PATH)/Makelists
 
+ifeq ($(USE_TESSERACT),yes)
+ifeq ($(USE_LEPTONICA),)
+USE_LEPTONICA := yes
+endif
+endif
+
 # --- Build a local static library for core mupdf ---
 
 include $(CLEAR_VARS)
@@ -61,6 +67,8 @@ LOCAL_C_INCLUDES += $(patsubst -I%,$(MUPDF_PATH)/%,$(filter -I%,$(OPENJPEG_CFLAG
 
 ifdef USE_TESSERACT
 LOCAL_C_INCLUDES += $(patsubst -I%,$(MUPDF_PATH)/%,$(filter -I%,$(TESSERACT_CFLAGS)))
+endif
+ifdef USE_LEPTONICA
 LOCAL_C_INCLUDES += $(patsubst -I%,$(MUPDF_PATH)/%,$(filter -I%,$(LEPTONICA_CFLAGS)))
 endif
 
@@ -76,8 +84,11 @@ LOCAL_CFLAGS += $(filter-out -I%,$(MUJS_CFLAGS))
 LOCAL_CFLAGS += $(filter-out -I%,$(OPENJPEG_CFLAGS))
 
 ifdef USE_TESSERACT
-LOCAL_CFLAGS += -DHAVE_LEPTONICA -DHAVE_TESSERACT
+LOCAL_CFLAGS += -DHAVE_TESSERACT
 LOCAL_CFLAGS += $(filter-out -I%,$(TESSERACT_CFLAGS))
+endif
+ifdef USE_LEPTONICA
+LOCAL_CFLAGS += -DHAVE_LEPTONICA
 LOCAL_CFLAGS += $(filter-out -I%,$(LEPTONICA_CFLAGS))
 endif
 
@@ -166,10 +177,11 @@ LOCAL_CFLAGS += $(MUPDF_EXTRA_CFLAGS)
 include $(BUILD_STATIC_LIBRARY)
 
 ifdef USE_TESSERACT
-# --- Build local static libraries for tesseract and leptonica ---
+# --- Build local static library for tesseract ---
 
 include $(CLEAR_VARS)
 LOCAL_MODULE += mupdf_thirdparty_tesseract
+LOCAL_C_INCLUDES := $(MUPDF_PATH)/include
 LOCAL_SRC_FILES += $(patsubst %,$(MUPDF_PATH)/%,$(TESSERACT_SRC))
 LOCAL_SRC_FILES += $(MUPDF_PATH)/source/fitz/tessocr.cpp
 LOCAL_C_INCLUDES += $(patsubst -I%,$(MUPDF_PATH)/%,$(filter -I%,$(TESSERACT_CFLAGS) $(TESSERACT_BUILD_CFLAGS)))
@@ -179,16 +191,23 @@ LOCAL_CFLAGS += $(MUPDF_EXTRA_CFLAGS)
 LOCAL_CPP_FEATURES := exceptions
 include $(BUILD_STATIC_LIBRARY)
 
+endif
+
+ifdef USE_LEPTONICA
+# --- Build local static library for leptonica ---
+
 include $(CLEAR_VARS)
 LOCAL_MODULE += mupdf_thirdparty_leptonica
+LOCAL_C_INCLUDES := $(MUPDF_PATH)/include
 LOCAL_SRC_FILES += $(patsubst %,$(MUPDF_PATH)/%,$(LEPTONICA_SRC))
+LOCAL_SRC_FILES += $(MUPDF_PATH)/source/fitz/leptonica-wrap.c
 LOCAL_C_INCLUDES += $(patsubst -I%,$(MUPDF_PATH)/%,$(filter -I%,$(LEPTONICA_CFLAGS) $(LEPTONICA_BUILD_CFLAGS)))
 LOCAL_CFLAGS += $(filter-out -I%,$(LEPTONICA_CFLAGS) $(LEPTONICA_BUILD_CFLAGS))
 LOCAL_CFLAGS += -Wno-sign-compare -DANDROID_BUILD
 LOCAL_CFLAGS += $(MUPDF_EXTRA_CFLAGS)
 include $(BUILD_STATIC_LIBRARY)
 
-endif  #  USE_TESSERACT
+endif  #  USE_LEPTONICA
 
 include $(CLEAR_VARS)
 LOCAL_MODULE += mupdf_thirdparty_extract
@@ -211,6 +230,12 @@ LOCAL_CFLAGS += $(MUPDF_EXTRA_CFLAGS)
 
 LOCAL_SRC_FILES += $(MUPDF_PATH)/platform/java/mupdf_native.c
 
+ifdef ADD_SOURCE_FILES
+LOCAL_SRC_FILES += $(ADD_SOURCE_FILES)
+LOCAL_CFLAGS += $(ADD_C_FLAGS)
+LOCAL_C_INCLUDES += $(ADD_C_INCLUDES)
+endif
+
 LOCAL_STATIC_LIBRARIES += mupdf_core
 LOCAL_STATIC_LIBRARIES += mupdf_thirdparty_freetype
 LOCAL_STATIC_LIBRARIES += mupdf_thirdparty_gumbo
@@ -221,8 +246,10 @@ LOCAL_STATIC_LIBRARIES += mupdf_thirdparty_libjpeg
 LOCAL_STATIC_LIBRARIES += mupdf_thirdparty_mujs
 LOCAL_STATIC_LIBRARIES += mupdf_thirdparty_openjpeg
 
-ifdef USE_TESSERACT
+ifdef USE_LEPTONICA
 LOCAL_STATIC_LIBRARIES += mupdf_thirdparty_leptonica
+endif
+ifdef USE_TESSERACT
 LOCAL_STATIC_LIBRARIES += mupdf_thirdparty_tesseract
 endif
 

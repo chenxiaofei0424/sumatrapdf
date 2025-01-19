@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 extern HeapAllocator* gLogAllocator;
@@ -7,9 +7,10 @@ extern bool gLogToConsole;
 extern bool gLogToDebugger;
 extern bool gReducedLogging;
 extern bool gLogToPipe;
-extern bool gStopLogging;
 extern const char* gLogAppName;
-void StartLogToFile(const char* path);
+extern char* gLogFilePath;
+void StartLogToFile(const char* path, bool removeIfExists);
+bool WriteCurrentLogToFile(const char* path);
 
 /*
 If you do:
@@ -22,9 +23,6 @@ This is an easy way to disable logging per file
 */
 
 #ifdef NO_LOG
-static inline void log(std::string_view) {
-    // do nothing
-}
 static inline void log(const char*) {
     // do nothing
 }
@@ -38,11 +36,12 @@ static inline void logf(const WCHAR*, ...) {
     // do nothing
 }
 #else
-void log(std::string_view s);
-void log(const char* s);
+void log(const char* s, bool always = false);
 void logf(const char* fmt, ...);
-void log(const WCHAR* s);
-void logf(const WCHAR* fmt, ...);
 #endif
+
+// always log, even if NO_LOG is defined or reduced logging
+void logfa(const char* fmt, ...);
+void loga(const char* s);
 
 void DestroyLogging();

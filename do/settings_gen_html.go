@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"html"
-	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -163,7 +161,7 @@ body {
 <h2>Languages supported by SumatraPDF %VER%</h2>
 
 <p>Languages supported by SumatraPDF. You can use ISO code as a value
-of <code>UiLanguage</code> setting in <a href="settings%VER%.html">settings file</a>.
+of <code>UiLanguage</code> setting in <a href="settings%VER_URL%">settings file</a>.
 </p>
 
 <p>Note: not all languages are fully translated. Help us <a href="http://www.apptranslator.org/app/SumatraPDF">translate SumatraPDF</a>.</p>
@@ -251,14 +249,14 @@ func rstrip(s string) string {
 	return strings.TrimRight(s, " \n\r\t")
 }
 
-func genStruct(struc *Field, indent string, isPreRelease bool) string {
+func genStruct(struc *Field, indent string) string {
 	var lines []string
 	first := true
 	insideExpert := false
 
 	fields := struc.Default.([]*Field)
 	for _, field := range fields {
-		if field.Internal || field.isComment() || (!isPreRelease && field.PreRelease) {
+		if field.Internal || field.isComment() {
 			continue
 		}
 		startIdx := len(lines)
@@ -278,12 +276,12 @@ func genStruct(struc *Field, indent string, isPreRelease bool) string {
 			indent2 := indent + indentStr[:len(indentStr)/2]
 			start := fmt.Sprintf("%s%s [\n%s[", indent, field.Name, indent2)
 			end := fmt.Sprintf("%s]\n%s]", indent2, indent)
-			inside := genStruct(field, indent+indentStr, isPreRelease)
+			inside := genStruct(field, indent+indentStr)
 			lines = append(lines, start, inside, end)
 		} else if field.Type.Name == "Struct" {
 			start := fmt.Sprintf("%s%s [", indent, field.Name)
 			end := fmt.Sprintf("%s]", indent)
-			inside := genStruct(field, indent+indentStr, isPreRelease)
+			inside := genStruct(field, indent+indentStr)
 			lines = append(lines, start, inside, end)
 		} else {
 			s = field.initDefault()
@@ -306,60 +304,4 @@ func mkLang(name string, code string) *Lang {
 		name: name,
 		code: code,
 	}
-}
-
-func websiteSettingsDir() string {
-	return filepath.Join("website", "settings")
-}
-
-func langsFileName() string {
-	ver := extractSumatraVersionMust()
-	return fmt.Sprintf("langs%s.html", urlizeVersion(ver))
-}
-
-func settingsFileName() string {
-	ver := extractSumatraVersionMust()
-	return fmt.Sprintf("settings%s.html", urlizeVersion(ver))
-}
-
-func genLangsHTML() {
-	var langs []*Lang
-	for _, el := range gLangs {
-		langs = append(langs, mkLang(el[1], el[0]))
-	}
-	sort.Slice(langs, func(i, j int) bool {
-		return langs[i].name < langs[j].name
-	})
-	var lines []string
-	for _, l := range langs {
-		s := fmt.Sprintf(`<tr><td>%s</td><td>%s</td></tr>`, l.name, l.code)
-		lines = append(lines, s)
-	}
-	inside := strings.Join(lines, "\n")
-	s := strings.Replace(tmplLangsHTML, "%INSIDE%", inside, -1)
-	s = strings.Replace(s, "%VER%", extractSumatraVersionMust(), -1)
-	s = strings.Replace(s, "settings.html", settingsFileName(), -1)
-	s = strings.Replace(s, "\n", "\r\n", -1)
-	// undo html escaping that differs from Python
-	// TODO: possibly remove
-	//s = strings.Replace(s, "&#39;", "'", -1)
-
-	path := filepath.Join(websiteSettingsDir(), langsFileName())
-	writeFileMust(path, []byte(s))
-}
-
-func genSettingsHTML() {
-	prefs := globalPrefsStruct
-	inside := genStruct(prefs, "", false)
-	s := strings.Replace(tmplHTML, "%INSIDE%", inside, -1)
-	s = strings.Replace(s, "%VER%", extractSumatraVersionMust(), -1)
-	s = strings.Replace(s, "langs.html", langsFileName(), -1)
-	s = strings.Replace(s, "\n", "\r\n", -1)
-	// undo html escaping that differs from Python
-	// TODO: possibly remove
-	//s = strings.Replace(s, "&#39;", "'", -1)
-
-	path := filepath.Join(websiteSettingsDir(), settingsFileName())
-	writeFileMust(path, []byte(s))
-	fmt.Printf("Wrote '%s'\n", path)
 }

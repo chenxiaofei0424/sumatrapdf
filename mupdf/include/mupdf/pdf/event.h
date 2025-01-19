@@ -1,5 +1,29 @@
+// Copyright (C) 2004-2022 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 39 Mesa Street, Suite 108A, San Francisco,
+// CA 94129, USA, for further information.
+
 #ifndef MUPDF_PDF_EVENT_H
 #define MUPDF_PDF_EVENT_H
+
+#include "mupdf/pdf/document.h"
 
 /*
 	Document events: the objects via which MuPDF informs the calling app
@@ -46,10 +70,12 @@ void *pdf_get_doc_event_callback_data(fz_context *ctx, pdf_document *doc);
 */
 typedef struct
 {
+	pdf_document *doc;
 	const char *message;
 	int icon_type;
 	int button_group_type;
 	const char *title;
+	int has_check_box;
 	const char *check_box_message;
 	int initially_checked;
 	int finally_checked;

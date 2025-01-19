@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
@@ -7,9 +7,9 @@
 #include "utils/FileUtil.h"
 #include "utils/SettingsUtil.h"
 
-#include "DisplayMode.h"
 #define INCLUDE_SETTINGSSTRUCTS_METADATA
-#include "SettingsStructs.h"
+#include "Settings.h"
+
 #include "GlobalPrefs.h"
 
 #include "utils/Log.h"
@@ -27,11 +27,11 @@ void DeleteDisplayState(FileState* fs) {
     FreeStruct(&gFileStateInfo, fs);
 }
 
-Favorite* NewFavorite(int pageNo, const WCHAR* name, const WCHAR* pageLabel) {
+Favorite* NewFavorite(int pageNo, const char* name, const char* pageLabel) {
     Favorite* fav = (Favorite*)DeserializeStruct(&gFavoriteInfo, nullptr);
     fav->pageNo = pageNo;
-    fav->name = strconv::WstrToUtf8(name);
-    fav->pageLabel = strconv::WstrToUtf8(pageLabel);
+    fav->name = str::Dup(name);
+    fav->pageLabel = str::Dup(pageLabel);
     return fav;
 }
 
@@ -44,6 +44,7 @@ GlobalPrefs* NewGlobalPrefs(const char* data) {
 }
 
 // prevData is used to preserve fields that exists in prevField but not in GlobalPrefs
+// caller has to free()
 ByteSlice SerializeGlobalPrefs(GlobalPrefs* prefs, const char* prevData) {
     if (!prefs->rememberStatePerDocument || !prefs->rememberOpenedFiles) {
         for (FileState* fs : *prefs->fileStates) {
@@ -99,7 +100,7 @@ TabState* NewTabState(FileState* fs) {
 }
 
 void ResetSessionState(Vec<SessionData*>* sessionData) {
-    CrashIf(!sessionData);
+    ReportIf(!sessionData);
     if (!sessionData) {
         return;
     }
@@ -117,6 +118,17 @@ ParsedColor* GetParsedColor(const char* s, ParsedColor& parsed) {
     return &parsed;
 }
 
+COLORREF GetParsedCOLORREF(const char* s, ParsedColor& parsed, COLORREF def) {
+    if (parsed.wasParsed) {
+        return parsed.col;
+    }
+    ParseColor(parsed, s);
+    if (parsed.wasParsed) {
+        return parsed.col;
+    }
+    return def;
+}
+
 void SetFileStatePath(FileState* fs, const char* path) {
     if (fs->filePath && str::EqI(fs->filePath, path)) {
         return;
@@ -127,4 +139,8 @@ void SetFileStatePath(FileState* fs, const char* path) {
 void SetFileStatePath(FileState* fs, const WCHAR* path) {
     char* pathA = ToUtf8Temp(path);
     SetFileStatePath(fs, pathA);
+}
+
+Themes* ParseThemes(const char* data) {
+    return (Themes*)DeserializeStruct(&gThemesInfo, data);
 }

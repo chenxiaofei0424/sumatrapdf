@@ -1,19 +1,20 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
 #include "utils/WinUtil.h"
+#include "utils/ScopedWin.h"
+
 #include <UIAutomationCore.h>
 #include <UIAutomationCoreApi.h>
 #include <OleAcc.h>
-#include "utils/ScopedWin.h"
 
-#include "wingui/TreeModel.h"
-#include "DisplayMode.h"
-#include "Controller.h"
+#include "wingui/UIModels.h"
+
+#include "Settings.h"
+#include "DocController.h"
 #include "EngineBase.h"
-#include "SettingsStructs.h"
-#include "EngineCreate.h"
+#include "EngineAll.h"
 #include "DisplayModel.h"
 #include "uia/PageProvider.h"
 #include "uia/Constants.h"
@@ -62,7 +63,7 @@ ULONG STDMETHODCALLTYPE SumatraUIAutomationPageProvider::AddRef() {
 
 ULONG STDMETHODCALLTYPE SumatraUIAutomationPageProvider::Release() {
     LONG res = InterlockedDecrement(&refCount);
-    CrashIf(res < 0);
+    ReportIf(res < 0);
     if (0 == res) {
         delete this;
     }
@@ -113,7 +114,7 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationPageProvider::GetRuntimeId(SAFEARRA
     int rId[] = {(int)canvasHwnd, SUMATRA_UIA_PAGE_RUNTIME_ID(pageNum)};
     for (LONG i = 0; i < 2; i++) {
         HRESULT hr = SafeArrayPutElement(psa, &i, (void*)&(rId[i]));
-        CrashIf(FAILED(hr));
+        ReportIf(FAILED(hr));
     }
 
     *pRetVal = psa;
@@ -191,7 +192,8 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationPageProvider::GetPropertyValue(PROP
 
     if (propertyId == UIA_NamePropertyId) {
         pRetVal->vt = VT_BSTR;
-        pRetVal->bstrVal = SysAllocString(AutoFreeWstr(str::Format(L"Page %d", pageNum)));
+        TempStr s = str::FormatTemp("Page %d", pageNum);
+        pRetVal->bstrVal = SysAllocString(ToWStrTemp(s));
         return S_OK;
     } else if (propertyId == UIA_IsValuePatternAvailablePropertyId) {
         pRetVal->vt = VT_BOOL;

@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
 enum class UpdateCheck {
@@ -6,5 +6,5 @@ enum class UpdateCheck {
     Automatic,     // an automatic, periodic check done at startup
 };
 
-void CheckForUpdateAsync(WindowInfo* win, UpdateCheck updateCheckType);
-void UpdateSelfTo(const WCHAR* path);
+void StartAsyncUpdateCheck(MainWindow* win, UpdateCheck updateCheckType);
+void UpdateSelfTo(const char* path);

@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 39 Mesa Street, Suite 108A, San Francisco,
+// CA 94129, USA, for further information.
+
 #ifndef MUPDF_FITZ_SHADE_H
 #define MUPDF_FITZ_SHADE_H
 
@@ -39,12 +61,14 @@ typedef struct
 	float background[FZ_MAX_COLORS];
 
 	/* Just to be confusing, PDF Shadings of Type 1 (Function Based
-	 * Shadings), do NOT use_function, but all the others do. This
+	 * Shadings), do NOT use function, but all the others do. This
 	 * is because Type 1 shadings take 2 inputs, whereas all the
 	 * others (when used with a function take 1 input. The type 1
 	 * data is in the 'f' field of the union below. */
-	int use_function;
-	float function[256][FZ_MAX_COLORS + 1];
+	/* If function_stride = 0, then function is not used. Otherwise
+	 * function points to 256*function_stride entries. */
+	int function_stride;
+	float *function;
 
 	int type; /* function, linear, radial, mesh */
 	union

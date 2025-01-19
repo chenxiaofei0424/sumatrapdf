@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 #include "utils/BaseUtil.h"
@@ -17,7 +17,7 @@ void dbglayoutf(const char* fmt, ...) {
 
     va_list args;
     va_start(args, fmt);
-    AutoFree s = str::FmtV(fmt, args);
+    AutoFreeStr s = str::FmtV(fmt, args);
     OutputDebugStringA(s.Get());
     va_end(args);
 }
@@ -29,7 +29,7 @@ static void LogAppendNum(str::Str& s, int n, const char* suffix) {
         s.AppendFmt("%d", n);
     }
     if (suffix) {
-        s.AppendView(suffix);
+        s.Append(suffix);
     }
 }
 
@@ -51,7 +51,7 @@ void LogConstraints(Constraints c, const char* suffix) {
         LogAppendNum(s, c.min.dy, " - ");
         LogAppendNum(s, c.max.dy, " ");
     }
-    s.AppendView(suffix);
+    s.Append(suffix);
     dbglayoutf("%s", s.Get());
 }
 
@@ -59,12 +59,14 @@ bool IsCollapsed(ILayout* l) {
     return l->GetVisibility() == Visibility::Collapse;
 }
 
-RECT RectToRECT(const Rect r) {
-    LONG left = r.x;
-    LONG top = r.y;
-    LONG right = left + r.dx;
-    LONG bottom = top + r.dy;
-    return RECT{left, top, right, bottom};
+void PositionRB(const Rect& container, Rect& r) {
+    r.x = container.dx - r.dx;
+    r.y = container.dy - r.dy;
+}
+
+void MoveXY(Rect& r, int x, int y) {
+    r.x += x;
+    r.y += y;
 }
 
 int Clamp(int v, int vmin, int vmax) {
@@ -190,14 +192,14 @@ Constraints Constraints::Inset(int width, int height) const {
     int deflatedMinWidth = GuardInf(minw, std::max(0, minw - width));
     int minh = min.dy;
     int deflatedMinHeight = GuardInf(minh, std::max(0, minh - height));
-    Size min{deflatedMinWidth, deflatedMinHeight};
+    Size min2{deflatedMinWidth, deflatedMinHeight};
     int maxw = max.dx;
     int maxh = max.dy;
-    Size max{
+    Size max2{
         std::max(deflatedMinWidth, GuardInf(maxw, maxw - width)),
         std::max(deflatedMinHeight, GuardInf(maxh, maxh - height)),
     };
-    return Constraints{min, max};
+    return Constraints{min2, max2};
 }
 
 bool Constraints::IsBounded() const {
@@ -268,8 +270,13 @@ Kind LayoutBase::GetKind() {
 void LayoutBase::SetVisibility(Visibility newVisibility) {
     visibility = newVisibility;
 }
+
 Visibility LayoutBase::GetVisibility() {
     return visibility;
+}
+
+void LayoutBase::SetBounds(Rect bounds) {
+    lastBounds = bounds;
 }
 
 bool IsLayoutOfKind(ILayout* l, Kind kind) {
@@ -348,7 +355,7 @@ VBox::~VBox() {
 }
 
 int VBox::ChildrenCount() const {
-    return children.isize();
+    return children.Size();
 }
 
 int VBox::NonCollapsedChildrenCount() {
@@ -675,7 +682,7 @@ HBox::~HBox() {
 }
 
 int HBox::ChildrenCount() const {
-    return children.isize();
+    return children.Size();
 }
 
 int HBox::NonCollapsedChildrenCount() {
@@ -981,7 +988,9 @@ Align::Align(ILayout* c) {
     kind = kindAlign;
 }
 
-Align::~Align() = default;
+Align::~Align() {
+    delete Child;
+}
 
 Size Align::Layout(const Constraints bc) {
     dbglayoutf("Align::Layout() ");
@@ -1047,7 +1056,7 @@ void LayoutAndSizeToContent(ILayout* layout, int minDx, int minDy, HWND hwnd) {
     Rect bounds{min, max};
     layout->SetBounds(bounds);
     ResizeHwndToClientArea(hwnd, size.dx, size.dy, false);
-    InvalidateRect(hwnd, nullptr, false);
+    HwndScheduleRepaint(hwnd);
 }
 
 Size LayoutToSize(ILayout* layout, const Size size) {
@@ -1066,7 +1075,7 @@ Insets DefaultInsets() {
 }
 
 Insets DpiScaledInsets(HWND hwnd, int top, int right, int bottom, int left) {
-    CrashIf(top < 0);
+    ReportIf(top < 0);
     if (right == -1) {
         // only first given, consider all to be the same
         right = top;
@@ -1078,7 +1087,7 @@ Insets DpiScaledInsets(HWND hwnd, int top, int right, int bottom, int left) {
         bottom = top;
         left = right;
     }
-    CrashIf(left == -1);
+    ReportIf(left == -1);
     Insets res = {DpiScale(hwnd, top), DpiScale(hwnd, right), DpiScale(hwnd, bottom), DpiScale(hwnd, left)};
     return res;
 }
@@ -1108,4 +1117,112 @@ int Spacer::MinIntrinsicWidth(int height) {
 }
 void Spacer::SetBounds(Rect) {
     // do nothing
+}
+
+Kind kindTableLayout = "tableLayout";
+
+TableLayout::TableLayout() {
+    kind = kindTableLayout;
+}
+
+TableLayout::~TableLayout() {
+    int n = rows * cols;
+    for (int i = 0; i < n; i++) {
+        auto child = cells[i].child;
+        delete child;
+    }
+    free(cells);
+    free(maxColWidths);
+}
+
+Size TableLayout::Layout(Constraints bc) {
+    // TODO: implement me
+    CrashMe();
+    return {};
+}
+
+int TableLayout::MinIntrinsicHeight(int width) {
+    // calc max height of each row, min height is sum of those
+    int minHeight = 0;
+    for (int row = 0; row < rows; row++) {
+        int maxRowHeight = 0;
+        for (int col = 0; col < cols; col++) {
+            ILayout* el = GetCell(row, col);
+            if (!el || IsCollapsed(el)) {
+                continue;
+            }
+            // TODO: width should probably be different for each cell
+            // i.e. if it's non-infinite then use width / cols or some
+            // more complicated scheme for non-uniformly sized columns
+            // or maybe not
+            int h = el->MinIntrinsicHeight(width);
+            if (h > maxRowHeight) {
+                maxRowHeight = h;
+            }
+        }
+        minHeight += maxRowHeight;
+    }
+    return minHeight;
+}
+
+int TableLayout::MinIntrinsicWidth(int height) {
+    // calc max width of each column, min width is sum of those
+    int minWidth = 0;
+    for (int col = 0; col < cols; col++) {
+        int maxColWidth = 0;
+        for (int row = 0; row < rows; row++) {
+            ILayout* el = GetCell(row, col);
+            if (!el || IsCollapsed(el)) {
+                continue;
+            }
+            // TODO: height should probably be different for each cell
+            // i.e. if it's non-infinite then use height / rows or some
+            // more complicated scheme for non-uniformly sized rows
+            // or maybe not
+            int h = el->MinIntrinsicWidth(height);
+            if (h > maxColWidth) {
+                maxColWidth = h;
+            }
+        }
+        minWidth += maxColWidth;
+    }
+    return minWidth;
+}
+
+void TableLayout::SetBounds(Rect) {
+    // TODO: implement me
+    CrashMe();
+}
+
+void TableLayout::SetSize(int rows, int cols) {
+    ReportIf(cells);     // TODO: maybe allow re-sizing
+    ReportIf(rows <= 0); // TODO: maybe allow empty
+    ReportIf(cols <= 0); // TODO: maybe allow empty
+    int n = rows * cols;
+    cells = AllocArray<Cell>(n);
+    maxColWidths = AllocArray<int>(cols);
+}
+
+int TableLayout::CellIdx(int row, int col) {
+    ReportIf(!cells);
+    ReportIf(row < 0 || row >= rows);
+    ReportIf(col < 0 || col >= cols);
+    int idx = col * cols + row;
+    return idx;
+}
+
+void TableLayout::SetCell(int row, int col, ILayout* child) {
+    int idx = CellIdx(row, col);
+    auto& cell = cells[idx];
+    if (cell.child) {
+        // delete existing child
+        delete cell.child;
+    }
+    cell.child = child;
+}
+
+ILayout* TableLayout::GetCell(int row, int col) {
+    int idx = CellIdx(row, col);
+    auto child = cells[idx].child;
+    return child;
 }

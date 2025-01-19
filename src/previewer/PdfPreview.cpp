@@ -1,29 +1,32 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
 #include "utils/ScopedWin.h"
+#include "utils/GdiPlusUtil.h"
 #include "utils/WinUtil.h"
+#include "mui/Mui.h"
 
-#include "Annotation.h"
-#include "wingui/TreeModel.h"
-#include "DisplayMode.h"
-#include "Controller.h"
+#include "wingui/UIModels.h"
+
+#include "Settings.h"
+#include "DocController.h"
 #include "EngineBase.h"
 #include "EngineAll.h"
-#include "mui/MiniMui.h"
-#include "PdfPreview.h"
+#include "Annotation.h"
+#include "RegistryPreview.h"
 
-#include "utils/Log.h"
 // TODO: move code to PdfPreviewBase.cpp
 #include "PdfPreviewBase.h"
+
+#include "utils/Log.h"
 
 constexpr COLORREF kColWindowBg = RGB(0x99, 0x99, 0x99);
 constexpr int kPreviewMargin = 2;
 constexpr UINT kUwmPaintAgain = (WM_USER + 101);
 
-void _submitDebugReportIfFunc(bool cond, __unused const char* condStr) {
-    // no-op implementation to satisfy SubmitBugReport()
+EBookUI* GetEBookUI() {
+    return nullptr;
 }
 
 IFACEMETHODIMP PreviewBase::GetThumbnail(uint cx, HBITMAP* phbmp, WTS_ALPHATYPE* pdwAlpha) {
@@ -39,7 +42,7 @@ IFACEMETHODIMP PreviewBase::GetThumbnail(uint cx, HBITMAP* phbmp, WTS_ALPHATYPE*
     float zoom = std::min(cx / (float)page.dx, cx / (float)page.dy) - 0.001f;
     Rect thumb = RectF(0, 0, page.dx * zoom, page.dy * zoom).Round();
 
-    BITMAPINFO bmi = {0};
+    BITMAPINFO bmi{};
     bmi.bmiHeader.biSize = sizeof(bmi.bmiHeader);
     bmi.bmiHeader.biHeight = thumb.dy;
     bmi.bmiHeader.biWidth = thumb.dx;
@@ -83,28 +86,28 @@ IFACEMETHODIMP PreviewBase::GetThumbnail(uint cx, HBITMAP* phbmp, WTS_ALPHATYPE*
 }
 
 class PageRenderer {
-    EngineBase* engine{nullptr};
-    HWND hwnd{nullptr};
+    EngineBase* engine = nullptr;
+    HWND hwnd = nullptr;
 
-    int currPage{0};
-    RenderedBitmap* currBmp{nullptr};
+    int currPage = 0;
+    RenderedBitmap* currBmp = nullptr;
     // due to rounding differences, currBmp->Size() and currSize can differ slightly
     Size currSize;
-    int reqPage{0};
-    float reqZoom{0.f};
-    Size reqSize;
-    bool reqAbort{false};
-    AbortCookie* abortCookie{nullptr};
+    int reqPage = 0;
+    float reqZoom = 0.f;
+    Size reqSize = {};
+    bool reqAbort = false;
+    AbortCookie* abortCookie = nullptr;
 
     CRITICAL_SECTION currAccess;
-    HANDLE thread{nullptr};
+    HANDLE thread = nullptr;
 
     // seeking inside an IStream spins an inner event loop
     // which can cause reentrance in OnPaint and leave an
     // engine semi-initialized when it's called recursively
     // (this only applies for the UI thread where the critical
     // sections can't prevent recursion without the risk of deadlock)
-    bool preventRecursion{false};
+    bool preventRecursion = false;
 
   public:
     PageRenderer(EngineBase* engine, HWND hwnd) {
@@ -138,7 +141,7 @@ class PageRenderer {
 
         ScopedCritSec scope(&currAccess);
         if (currBmp && currPage == pageNo && currSize == target.Size()) {
-            currBmp->StretchDIBits(hdc, target);
+            currBmp->Blit(hdc, target);
         } else if (!thread) {
             reqPage = pageNo;
             reqZoom = zoom;
@@ -223,7 +226,7 @@ static LRESULT OnPaint(HWND hwnd) {
 }
 
 static LRESULT OnVScroll(HWND hwnd, WPARAM wp) {
-    SCROLLINFO si = {0};
+    SCROLLINFO si{};
     si.cbSize = sizeof(si);
     si.fMask = SIF_ALL;
     GetScrollInfo(hwnd, SB_VERT, &si);
@@ -296,10 +299,13 @@ static LRESULT CALLBACK PreviewWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         case WM_KEYDOWN:
             return OnKeydown(hwnd, wp);
         case WM_LBUTTONDOWN:
-            SetFocus(hwnd);
+            HwndSetFocus(hwnd);
             return 0;
-        case WM_MOUSEWHEEL:
-            return OnVScroll(hwnd, GET_WHEEL_DELTA_WPARAM(wp) > 0 ? SB_LINEUP : SB_LINEDOWN);
+        case WM_MOUSEWHEEL: {
+            auto delta = GET_WHEEL_DELTA_WPARAM(wp);
+            wp = delta > 0 ? SB_LINEUP : SB_LINEDOWN;
+            return OnVScroll(hwnd, wp);
+        }
         case WM_DESTROY:
             return OnDestroy(hwnd);
         case kUwmPaintAgain:
@@ -314,7 +320,7 @@ static LRESULT CALLBACK PreviewWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
 IFACEMETHODIMP PreviewBase::DoPreview() {
     log("PreviewBase::DoPreview()\n");
 
-    WNDCLASSEX wcex = {0};
+    WNDCLASSEX wcex{};
     wcex.cbSize = sizeof(wcex);
     wcex.lpfnWndProc = PreviewWndProc;
     wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
@@ -340,7 +346,7 @@ IFACEMETHODIMP PreviewBase::DoPreview() {
         engine = nullptr;
     }
 
-    SCROLLINFO si = {0};
+    SCROLLINFO si{};
     si.cbSize = sizeof(si);
     si.fMask = SIF_ALL;
     si.nPos = 1;
@@ -369,7 +375,7 @@ EngineBase* DjVuPreview::LoadEngine(IStream* stream) {
     return CreateEngineDjVuFromStream(stream);
 }
 
-EpubPreview::EpubPreview(long* plRefCount) : PreviewBase(plRefCount, SZ_EPUB_PREVIEW_CLSID) {
+EpubPreview::EpubPreview(long* plRefCount) : PreviewBase(plRefCount, kEpubPreviewClsid) {
     log("EpubPreview::EpubPreview()\n");
     m_gdiScope = new ScopedGdiPlus();
     mui::Initialize();
@@ -384,7 +390,7 @@ EngineBase* EpubPreview::LoadEngine(IStream* stream) {
     return CreateEngineEpubFromStream(stream);
 }
 
-Fb2Preview::Fb2Preview(long* plRefCount) : PreviewBase(plRefCount, SZ_FB2_PREVIEW_CLSID) {
+Fb2Preview::Fb2Preview(long* plRefCount) : PreviewBase(plRefCount, kFb2PreviewClsid) {
     m_gdiScope = new ScopedGdiPlus();
     mui::Initialize();
 }
@@ -398,7 +404,7 @@ EngineBase* Fb2Preview::LoadEngine(IStream* stream) {
     return CreateEngineFb2FromStream(stream);
 }
 
-MobiPreview::MobiPreview(long* plRefCount) : PreviewBase(plRefCount, SZ_MOBI_PREVIEW_CLSID) {
+MobiPreview::MobiPreview(long* plRefCount) : PreviewBase(plRefCount, kMobiPreviewClsid) {
     m_gdiScope = new ScopedGdiPlus();
     mui::Initialize();
 }

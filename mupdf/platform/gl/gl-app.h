@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2022 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 39 Mesa Street, Suite 108A, San Francisco,
+// CA 94129, USA, for further information.
+
 #ifndef MUPDF_GL_APP_H
 #define MUPDF_GL_APP_H
 
@@ -149,12 +171,25 @@ enum
 	UI_INPUT_ACCEPT = 2,
 };
 
+#define UI_INPUT_SIZE (16*1024)
+
 struct input
 {
-	char text[16*1024];
+	char text[UI_INPUT_SIZE];
 	char *end, *p, *q;
 	int scroll;
 	pdf_annot *widget;
+};
+
+#define UI_READLINE_SIZE 20
+
+struct readline
+{
+	struct input input;
+	char buffer[UI_READLINE_SIZE][UI_INPUT_SIZE];
+	char *history[UI_READLINE_SIZE];
+	int used;
+	int current;
 };
 
 struct list
@@ -184,9 +219,9 @@ void ui_panel_begin(int w, int h, int padx, int pady, int opaque);
 void ui_panel_end(void);
 
 void ui_spacer(void);
-void ui_splitter(int *x, int min, int max, enum side side);
+void ui_splitter(int *start, int *x, int min, int max, enum side side);
 void ui_label(const char *fmt, ...);
-void ui_label_with_scrollbar(char *text, int width, int height, int *scroll);
+void ui_label_with_scrollbar(char *text, int width, int height, int *scroll, int *sticky);
 
 int ui_button(const char *label);
 /* flags: bit 0 -> disabled. all other bits 0 for now. */
@@ -199,7 +234,10 @@ int ui_select_aux(const void *id, const char *current, const char *options[], in
 
 void ui_input_init(struct input *input, const char *text);
 int ui_input(struct input *input, int width, int height);
-void ui_scrollbar(int x0, int y0, int x1, int y1, int *value, int page_size, int max);
+void ui_scrollbar(int x0, int y0, int x1, int y1, int *value, int page_size, int max, int *sticky);
+
+void ui_readline_init(struct readline *readline, const char *text);
+const char *ui_readline(struct readline *readline, int width);
 
 void ui_tree_begin(struct list *list, int count, int req_w, int req_h, int is_tree);
 int ui_tree_item(struct list *list, const void *id, const char *label, int selected, int depth, int is_branch, int *is_open);
@@ -252,6 +290,7 @@ void ui_draw_ibevel_rect(fz_irect area, unsigned int fill, int depressed);
 /* App */
 
 extern fz_context *ctx;
+extern fz_colorspace *profile;
 extern pdf_document *pdf;
 extern pdf_page *page;
 extern fz_stext_page *page_text;
@@ -290,5 +329,6 @@ int do_sign(void);
 void trace_action(const char *fmt, ...);
 void trace_page_update(void);
 void trace_save_snapshot(void);
+const char *format_date(int64_t secs);
 
 #endif

@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
 #include <Thumbcache.h>
@@ -11,7 +11,7 @@ class PreviewBase : public IThumbnailProvider,
                     public IPreviewHandler,
                     public IOleWindow {
   public:
-    PreviewBase(long* plRefCount, const WCHAR* clsid) {
+    PreviewBase(long* plRefCount, const char* clsid) {
         m_plModuleRef = plRefCount;
         InterlockedIncrement(m_plModuleRef);
     }
@@ -114,7 +114,7 @@ class PreviewBase : public IThumbnailProvider,
         if (!prc) {
             return E_INVALIDARG;
         }
-        m_rcParent = Rect::FromRECT(*prc);
+        m_rcParent = ToRect(*prc);
         if (m_hwnd) {
             UINT flags = SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE;
             int x = m_rcParent.x;
@@ -134,7 +134,7 @@ class PreviewBase : public IThumbnailProvider,
             m_hwnd = nullptr;
         }
         m_pStream = nullptr;
-        delete m_engine;
+        m_engine->Release();
         m_engine = nullptr;
         return S_OK;
     }
@@ -158,19 +158,19 @@ class PreviewBase : public IThumbnailProvider,
         return m_engine;
     }
 
-    PageRenderer* renderer{nullptr};
+    PageRenderer* renderer = nullptr;
 
   protected:
-    long m_lRef{1};
-    long* m_plModuleRef{nullptr};
+    long m_lRef = 1;
+    long* m_plModuleRef = nullptr;
     ScopedComPtr<IStream> m_pStream;
-    EngineBase* m_engine{nullptr};
+    EngineBase* m_engine = nullptr;
     // engines based on EngineImages require GDI+ to be preloaded
-    ScopedGdiPlus* m_gdiScope{nullptr};
+    ScopedGdiPlus* m_gdiScope = nullptr;
     // state for IPreviewHandler
     ScopedComPtr<IUnknown> m_site;
-    HWND m_hwnd{nullptr};
-    HWND m_hwndParent{nullptr};
+    HWND m_hwnd = nullptr;
+    HWND m_hwndParent = nullptr;
     Rect m_rcParent;
 
     virtual EngineBase* LoadEngine(IStream* stream) = 0;
@@ -178,7 +178,7 @@ class PreviewBase : public IThumbnailProvider,
 
 class PdfPreview : public PreviewBase {
   public:
-    PdfPreview(long* plRefCount) : PreviewBase(plRefCount, SZ_PDF_PREVIEW_CLSID) {
+    PdfPreview(long* plRefCount) : PreviewBase(plRefCount, kPdfPreviewClsid) {
     }
 
   protected:
@@ -188,7 +188,7 @@ class PdfPreview : public PreviewBase {
 #if 0
 class XpsPreview : public PreviewBase {
   public:
-    XpsPreview(long* plRefCount) : PreviewBase(plRefCount, SZ_XPS_PREVIEW_CLSID) {
+    XpsPreview(long* plRefCount) : PreviewBase(plRefCount, kXpsPreviewClsid) {
     }
 
   protected:
@@ -198,7 +198,7 @@ class XpsPreview : public PreviewBase {
 
 class DjVuPreview : public PreviewBase {
   public:
-    DjVuPreview(long* plRefCount) : PreviewBase(plRefCount, SZ_DJVU_PREVIEW_CLSID) {
+    DjVuPreview(long* plRefCount) : PreviewBase(plRefCount, kDjVuPreviewClsid) {
         m_gdiScope = new ScopedGdiPlus();
     }
 
@@ -235,7 +235,7 @@ class MobiPreview : public PreviewBase {
 
 class CbxPreview : public PreviewBase {
   public:
-    CbxPreview(long* plRefCount) : PreviewBase(plRefCount, SZ_CBX_PREVIEW_CLSID) {
+    CbxPreview(long* plRefCount) : PreviewBase(plRefCount, kCbxPreviewClsid) {
         m_gdiScope = new ScopedGdiPlus();
     }
 
@@ -245,7 +245,7 @@ class CbxPreview : public PreviewBase {
 
 class TgaPreview : public PreviewBase {
   public:
-    TgaPreview(long* plRefCount) : PreviewBase(plRefCount, SZ_TGA_PREVIEW_CLSID) {
+    TgaPreview(long* plRefCount) : PreviewBase(plRefCount, kTgaPreviewClsid) {
         m_gdiScope = new ScopedGdiPlus();
     }
 

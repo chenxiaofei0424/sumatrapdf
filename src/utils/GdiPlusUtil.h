@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 struct RenderedBitmap;
@@ -19,10 +19,7 @@ RectF MeasureText(Gdiplus::Graphics* g, Gdiplus::Font* f, const WCHAR* s, size_t
 
 void GetBaseTransform(Gdiplus::Matrix& m, Gdiplus::RectF pageRect, float zoom, int rotation);
 
-const WCHAR* GfxFileExtFromData(ByteSlice);
-bool IsGdiPlusNativeFormat(ByteSlice);
-Gdiplus::Bitmap* BitmapFromData(ByteSlice);
-Size BitmapSizeFromData(ByteSlice);
+Gdiplus::Bitmap* BitmapFromDataWin(const ByteSlice& bmpData);
+Size BitmapSizeFromData(const ByteSlice&);
 CLSID GetEncoderClsid(const WCHAR* format);
-RenderedBitmap* LoadRenderedBitmap(const WCHAR* path);
-RenderedBitmap* LoadRenderedBitmap(const char* path);
+RenderedBitmap* LoadRenderedBitmapWin(const char* path);

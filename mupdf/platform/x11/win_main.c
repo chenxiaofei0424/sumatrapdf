@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2024 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 39 Mesa Street, Suite 108A, San Francisco,
+// CA 94129, USA, for further information.
+
 #ifndef UNICODE
 #define UNICODE
 #endif
@@ -18,10 +40,6 @@
 
 #ifndef WM_MOUSEWHEEL
 #define WM_MOUSEWHEEL 0x020A
-#endif
-
-#ifndef PATH_MAX
-#define PATH_MAX 4096
 #endif
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -1276,6 +1294,7 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShow
 	MSG msg;
 	int code;
 	fz_context *ctx;
+	char *profile_name = NULL;
 	int kbps = 0;
 	int displayRes = get_system_dpi();
 	int c;
@@ -1295,7 +1314,7 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShow
 
 	argv = fz_argv_from_wargv(argc, wargv);
 
-	while ((c = fz_getopt(argc, argv, "Ip:r:A:C:W:H:S:U:Xb:")) != -1)
+	while ((c = fz_getopt(argc, argv, "Ip:r:A:C:W:H:S:U:Xb:c:")) != -1)
 	{
 		switch (c)
 		{
@@ -1308,6 +1327,7 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShow
 		case 'r': displayRes = fz_atoi(fz_optarg); break;
 		case 'I': gapp.invert = 1; break;
 		case 'A': fz_set_aa_level(ctx, fz_atoi(fz_optarg)); break;
+		case 'c': profile_name = fz_optarg; break;
 		case 'W': gapp.layout_w = fz_atoi(fz_optarg); break;
 		case 'H': gapp.layout_h = fz_atoi(fz_optarg); break;
 		case 'S': gapp.layout_em = fz_atoi(fz_optarg); break;
@@ -1340,6 +1360,9 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShow
 
 	if (fz_optind < argc)
 		gapp.pageno = atoi(argv[fz_optind++]);
+
+	if (profile_name)
+		pdfapp_load_profile(&gapp, profile_name);
 
 	if (kbps)
 		pdfapp_open_progressive(&gapp, filename, 0, kbps);

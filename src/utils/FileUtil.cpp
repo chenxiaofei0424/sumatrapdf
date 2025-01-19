@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 #include "utils/BaseUtil.h"
@@ -15,13 +15,36 @@
 
 namespace path {
 
+Type GetType(const char* pathA) {
+    if (!pathA) {
+        Type::None;
+    }
+
+    WCHAR* path = ToWStrTemp(pathA);
+    WIN32_FILE_ATTRIBUTE_DATA fileInfo;
+    BOOL res = GetFileAttributesEx(path, GetFileExInfoStandard, &fileInfo);
+    if (0 == res) {
+        // path doesn't exist
+        return Type::None;
+    }
+    if (fileInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+        return Type::Dir;
+    }
+    // TODO: not sure if that is that simple, but whatevs
+    // https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants
+    return Type::File;
+}
+
 bool IsSep(char c) {
     return '\\' == c || '/' == c;
 }
 
 // do not free, returns pointer inside <path>
-const char* GetBaseNameTemp(const char* path) {
-    const char* s = path + str::Len(path);
+// Note: if want to change to returning TempStr, would have
+// to audit caller as they depend of in-place nature of returned
+// value
+TempStr GetBaseNameTemp(const char* path) {
+    char* s = (char*)path + str::Len(path);
     for (; s > path; s--) {
         if (IsSep(s[-1])) {
             break;
@@ -30,20 +53,7 @@ const char* GetBaseNameTemp(const char* path) {
     return s;
 }
 
-std::string_view GetBaseName(std::string_view path) {
-    const char* end = path.data() + path.size();
-    const char* s = end;
-    for (; s > path.data(); s--) {
-        if (IsSep(s[-1])) {
-            break;
-        }
-    }
-    const char* res = str::Dup(s, end - s);
-    return res;
-}
-
-// do not free, returns pointer inside <path>
-const char* GetExtTemp(const char* path) {
+static const char* GetExtPos(const char* path) {
     const char* ext = nullptr;
     char c = *path;
     while (c) {
@@ -55,13 +65,46 @@ const char* GetExtTemp(const char* path) {
         path++;
         c = *path;
     }
-    if (nullptr == ext) {
-        return path; // empty string
-    }
     return ext;
 }
 
-char* Join(const char* path, const char* fileName, Allocator* allocator) {
+TempStr GetExtTemp(const char* path) {
+    const char* ext = GetExtPos(path);
+    if (nullptr == ext) {
+        return TempStr("");
+    }
+    return str::DupTemp(ext);
+}
+
+TempStr GetPathNoExtTemp(const char* path) {
+    const char* ext = GetExtPos(path);
+    if (nullptr == ext) {
+        return str::DupTemp(path);
+    }
+    size_t n = ext - path;
+    return str::DupTemp(path, n);
+}
+
+TempStr JoinTemp(const char* path, const char* fileName, const char* fileName2) {
+    // TODO: not sure if should allow null path
+    if (IsSep(*fileName)) {
+        fileName++;
+    }
+    const char* sepStr = nullptr;
+    size_t pathLen = str::Len(path);
+    if (pathLen > 0) {
+        if (!IsSep(path[pathLen - 1])) {
+            sepStr = "\\";
+        }
+    }
+    TempStr res = str::JoinTemp(path, sepStr, fileName);
+    if (fileName2) {
+        res = JoinTemp(res, fileName2);
+    }
+    return res;
+}
+
+char* Join(Allocator* allocator, const char* path, const char* fileName) {
     if (IsSep(*fileName)) {
         fileName++;
     }
@@ -69,19 +112,15 @@ char* Join(const char* path, const char* fileName, Allocator* allocator) {
     if (!IsSep(path[str::Len(path) - 1])) {
         sepStr = "\\";
     }
-    return str::Join(path, sepStr, fileName, allocator);
+    return str::Join(allocator, path, sepStr, fileName);
 }
 
-bool IsDirectory(std::wstring_view path) {
-    DWORD attrs = GetFileAttributesW(path.data());
-    if (INVALID_FILE_ATTRIBUTES == attrs) {
-        return false;
-    }
-    return (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
+char* Join(const char* path, const char* fileName) {
+    return Join(nullptr, path, fileName);
 }
 
-bool IsDirectory(std::string_view path) {
-    auto pathW = ToWstrTemp(path);
+bool IsDirectory(const char* path) {
+    auto pathW = ToWStrTemp(path);
     DWORD attrs = GetFileAttributesW(pathW);
     if (INVALID_FILE_ATTRIBUTES == attrs) {
         return false;
@@ -89,12 +128,12 @@ bool IsDirectory(std::string_view path) {
     return (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
 }
 
-bool IsSep(WCHAR c) {
+static bool IsSep(WCHAR c) {
     return '\\' == c || '/' == c;
 }
 
 // do not free, returns pointer inside <path>
-const WCHAR* GetBaseNameTemp(const WCHAR* path) {
+static const WCHAR* GetBaseNameTemp(const WCHAR* path) {
     const WCHAR* end = path + str::Len(path);
     while (end > path) {
         if (IsSep(end[-1])) {
@@ -105,67 +144,51 @@ const WCHAR* GetBaseNameTemp(const WCHAR* path) {
     return end;
 }
 
-// returns extension e.g. ".pdf"
-// do not free, returns pointer inside <path>
-const WCHAR* GetExtTemp(const WCHAR* path) {
-    const WCHAR* ext = path + str::Len(path);
-    while ((ext > path) && !IsSep(*ext)) {
-        if (*ext == '.') {
-            return ext;
-        }
-        ext--;
-    }
-    return path + str::Len(path);
-}
-
-// caller has to free() the results
-WCHAR* GetDir(const WCHAR* path) {
+TempWStr GetDirTemp(const WCHAR* path) {
     const WCHAR* baseName = GetBaseNameTemp(path);
     if (baseName == path) {
         // relative directory
-        return str::Dup(L".");
+        return str::DupTemp(L".");
     }
     if (baseName == path + 1) {
         // relative root
-        return str::Dup(path, 1);
+        return str::DupTemp(path, 1);
     }
     if (baseName == path + 3 && path[1] == ':') {
         // local drive root
-        return str::Dup(path, 3);
+        return str::DupTemp(path, 3);
     }
     if (baseName == path + 2 && str::StartsWith(path, L"\\\\")) {
         // server root
-        return str::Dup(path);
+        return str::DupTemp(path);
     }
     // any subdirectory
-    return str::Dup(path, baseName - path - 1);
+    return str::DupTemp(path, baseName - path - 1);
 }
 
-// caller has to free() the results
-std::string_view GetDir(std::string_view pathSV) {
-    const char* path = pathSV.data();
-    const char* baseName = GetBaseNameTemp(path);
+TempStr GetDirTemp(const char* path) {
+    TempStr baseName = GetBaseNameTemp(path);
     if (baseName == path) {
         // relative directory
-        return str::Dup(".");
+        return str::DupTemp(".");
     }
     if (baseName == path + 1) {
         // relative root
-        return str::Dup(path, 1);
+        return str::DupTemp(path, 1);
     }
     if (baseName == path + 3 && path[1] == ':') {
         // local drive root
-        return str::Dup(path, 3);
+        return str::DupTemp(path, 3);
     }
     if (baseName == path + 2 && str::StartsWith(path, "\\\\")) {
         // server root
-        return str::Dup(path);
+        return str::DupTemp(path);
     }
     // any subdirectory
-    return str::Dup(path, baseName - path - 1);
+    return str::DupTemp(path, baseName - path - 1);
 }
 
-WCHAR* Join(const WCHAR* path, const WCHAR* fileName, const WCHAR* fileName2) {
+TempWStr JoinTemp(const WCHAR* path, const WCHAR* fileName, const WCHAR* fileName2) {
     // TODO: not sure if should allow null path
     if (IsSep(*fileName)) {
         fileName++;
@@ -177,13 +200,16 @@ WCHAR* Join(const WCHAR* path, const WCHAR* fileName, const WCHAR* fileName2) {
             sepStr = L"\\";
         }
     }
-    WCHAR* res = str::Join(path, sepStr, fileName);
+    TempWStr res = str::JoinTemp(path, sepStr, fileName);
     if (fileName2) {
-        WCHAR* toFree = res;
-        res = Join(res, fileName2);
-        free(toFree);
+        res = JoinTemp(res, fileName2);
     }
     return res;
+}
+
+WCHAR* Join(const WCHAR* path, const WCHAR* fileName, const WCHAR* fileName2) {
+    WCHAR* res = JoinTemp(path, fileName, fileName2);
+    return str::Dup(res);
 }
 
 // Normalize a file path.
@@ -204,57 +230,67 @@ WCHAR* Join(const WCHAR* path, const WCHAR* fileName, const WCHAR* fileName2) {
 // e.g. suppose the a file "C:\foo\Bar.Pdf" exists on the file system then
 //    "c:\foo\bar.pdf" becomes "c:\foo\Bar.Pdf"
 //    "C:\foo\BAR.PDF" becomes "C:\foo\Bar.Pdf"
-WCHAR* Normalize(const WCHAR* path) {
+static TempWStr NormalizeTemp(const WCHAR* path) {
     // convert to absolute path, change slashes into backslashes
     DWORD cch = GetFullPathNameW(path, 0, nullptr, nullptr);
     if (!cch) {
-        return str::Dup(path);
+        return str::DupTemp(path);
     }
 
-    AutoFreeWstr fullpath(AllocArray<WCHAR>(cch));
-    GetFullPathNameW(path, cch, fullpath, nullptr);
+    TempWStr fullPath = AllocArrayTemp<WCHAR>(cch);
+    GetFullPathNameW(path, cch, fullPath, nullptr);
     // convert to long form
-    cch = GetLongPathName(fullpath, nullptr, 0);
+    cch = GetLongPathNameW(fullPath, nullptr, 0);
     if (!cch) {
-        return fullpath.StealData();
+        return fullPath;
     }
 
-    AutoFreeWstr normpath(AllocArray<WCHAR>(cch));
-    GetLongPathName(fullpath, normpath, cch);
+    TempWStr normPath = AllocArrayTemp<WCHAR>(cch);
+    GetLongPathNameW(fullPath, normPath, cch);
     if (cch <= MAX_PATH) {
-        return normpath.StealData();
+        return normPath;
     }
 
     // handle overlong paths: first, try to shorten the path
-    cch = GetShortPathName(fullpath, nullptr, 0);
+    cch = GetShortPathNameW(fullPath, nullptr, 0);
     if (cch && cch <= MAX_PATH) {
-        AutoFreeWstr shortpath(AllocArray<WCHAR>(cch));
-        GetShortPathName(fullpath, shortpath, cch);
-        if (str::Len(path::GetBaseNameTemp(normpath)) + path::GetBaseNameTemp(shortpath) - shortpath < MAX_PATH) {
+        TempWStr shortPath = AllocArrayTemp<WCHAR>(cch);
+        GetShortPathNameW(fullPath, shortPath, cch);
+        TempWStr shortPathName = (TempWStr)path::GetBaseNameTemp(shortPath);
+        TempWStr normPathName = (TempWStr)path::GetBaseNameTemp(normPath);
+        if (str::Len(normPathName) + shortPathName - shortPath < MAX_PATH) {
             // keep the long filename if possible
-            *(WCHAR*)path::GetBaseNameTemp(shortpath) = '\0';
-            return str::Join(shortpath, path::GetBaseNameTemp(normpath));
+            *shortPathName = 0;
+            return str::JoinTemp(shortPath, path::GetBaseNameTemp(normPath));
         }
-        return shortpath.StealData();
+        return shortPath;
     }
     // else mark the path as overlong
-    if (str::StartsWith(normpath.Get(), L"\\\\?\\")) {
-        return normpath.StealData();
+    if (str::StartsWith(normPath, L"\\\\?\\")) {
+        return normPath;
     }
-    return str::Join(L"\\\\?\\", normpath);
+    return str::JoinTemp(L"\\\\?\\", normPath);
+}
+
+TempStr NormalizeTemp(const char* path) {
+    TempWStr s = ToWStrTemp(path);
+    TempWStr ws = NormalizeTemp(s);
+    TempStr res = ToUtf8Temp(ws);
+    return res;
 }
 
 // Normalizes the file path and the converts it into a short form that
 // can be used for interaction with non-UNICODE aware applications
-WCHAR* ShortPath(const WCHAR* path) {
-    AutoFreeWstr normpath(Normalize(path));
-    DWORD cch = GetShortPathName(normpath, nullptr, 0);
+TempStr ShortPathTemp(const char* path) {
+    TempWStr pathW = ToWStrTemp(path);
+    TempWStr normPath = NormalizeTemp(pathW);
+    DWORD cch = GetShortPathNameW(normPath, nullptr, 0);
     if (!cch) {
-        return normpath.StealData();
+        return ToUtf8Temp(normPath);
     }
-    WCHAR* shortpath = AllocArray<WCHAR>(cch);
-    GetShortPathName(normpath, shortpath, cch);
-    return shortpath;
+    TempWStr shortPath = AllocArrayTemp<WCHAR>(cch + 1);
+    GetShortPathNameW(normPath, shortPath, cch);
+    return ToUtf8Temp(shortPath);
 }
 
 static bool IsSameFileHandleInformation(BY_HANDLE_FILE_INFORMATION& fi1, BY_HANDLE_FILE_INFORMATION fi2) {
@@ -291,23 +327,28 @@ static bool IsSameFileHandleInformation(BY_HANDLE_FILE_INFORMATION& fi1, BY_HAND
 // Code adapted from
 // http://stackoverflow.com/questions/562701/best-way-to-determine-if-two-path-reference-to-same-file-in-c-c/562830#562830
 // Determine if 2 paths point ot the same file...
-bool IsSame(const WCHAR* path1, const WCHAR* path2) {
+bool IsSame(const char* path1, const char* path2) {
+    if (!path1 || !path2) {
+        return false;
+    }
     if (str::EqI(path1, path2)) {
         return true;
     }
 
     // we assume that if the last part doesn't match, they can't be the same
-    const WCHAR* base1 = path::GetBaseNameTemp(path1);
-    const WCHAR* base2 = path::GetBaseNameTemp(path2);
+    TempStr base1 = path::GetBaseNameTemp(path1);
+    TempStr base2 = path::GetBaseNameTemp(path2);
     if (!str::EqI(base1, base2)) {
         return false;
     }
 
+    WCHAR* path1W = ToWStrTemp(path1);
+    WCHAR* path2W = ToWStrTemp(path2);
     bool isSame = false;
     bool needFallback = true;
     // CreateFile might fail for already opened files
-    HANDLE h1 = CreateFileW(path1, 0, 0, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
-    HANDLE h2 = CreateFileW(path2, 0, 0, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    HANDLE h1 = CreateFileW(path1W, 0, 0, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    HANDLE h2 = CreateFileW(path2W, 0, 0, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
 
     if (h1 != INVALID_HANDLE_VALUE && h2 != INVALID_HANDLE_VALUE) {
         BY_HANDLE_FILE_INFORMATION fi1, fi2;
@@ -324,8 +365,8 @@ bool IsSame(const WCHAR* path1, const WCHAR* path2) {
         return isSame;
     }
 
-    AutoFreeWstr npath1(Normalize(path1));
-    AutoFreeWstr npath2(Normalize(path2));
+    char* npath1 = NormalizeTemp(path1);
+    char* npath2 = NormalizeTemp(path2);
     // consider the files different, if their paths can't be normalized
     return npath1 && str::EqI(npath1, npath2);
 }
@@ -347,31 +388,15 @@ bool HasVariableDriveLetter(const char* path) {
     return false;
 }
 
-bool HasVariableDriveLetter(const WCHAR* path) {
-    WCHAR root[] = L"?:\\";
-    root[0] = towupper(path[0]);
-    if (root[0] < 'A' || 'Z' < root[0]) {
-        return false;
-    }
-
-    uint driveType = GetDriveTypeW(root);
-    switch (driveType) {
-        case DRIVE_REMOVABLE:
-        case DRIVE_CDROM:
-        case DRIVE_NO_ROOT_DIR:
-            return true;
-    }
-    return false;
-}
-
-bool IsOnFixedDrive(const WCHAR* path) {
-    if (PathIsNetworkPath(path)) {
+bool IsOnFixedDrive(const char* pathA) {
+    WCHAR* path = ToWStrTemp(pathA);
+    if (PathIsNetworkPathW(path)) {
         return false;
     }
 
     uint type;
     WCHAR root[MAX_PATH];
-    if (GetVolumePathName(path, root, dimof(root))) {
+    if (GetVolumePathNameW(path, root, dimof(root))) {
         type = GetDriveType(root);
     } else {
         type = GetDriveType(path);
@@ -399,69 +424,88 @@ static bool MatchWildcardsRec(const WCHAR* fileName, const WCHAR* filter) {
 #undef AtEndOf
 }
 
+static bool AtEndOf(const char* str) {
+    return *str == 0;
+}
+
+static bool MatchWildcardsRec(const char* fileName, const char* filter) {
+    switch (*filter) {
+        case '\0':
+        case ';':
+            return AtEndOf(fileName);
+        case '*':
+            filter++;
+            while (!AtEndOf(fileName) && !MatchWildcardsRec(fileName, filter)) {
+                fileName++;
+            }
+            return !AtEndOf(fileName) || AtEndOf(filter) || *filter == ';';
+        case '?':
+            return !AtEndOf(fileName) && MatchWildcardsRec(fileName + 1, filter + 1);
+        default:
+            return tolower(*fileName) == tolower(*filter) && MatchWildcardsRec(fileName + 1, filter + 1);
+    }
+}
+
 /* matches the filename of a path against a list of semicolon
    separated filters as used by the common file dialogs
    (e.g. "*.pdf;*.xps;?.*" will match all PDF and XPS files and
    all filenames consisting of only a single character and
    having any extension) */
-bool Match(const WCHAR* path, const WCHAR* filter) {
+bool Match(const char* path, const char* filter) {
     path = GetBaseNameTemp(path);
     while (str::FindChar(filter, L';')) {
         if (MatchWildcardsRec(path, filter)) {
             return true;
         }
-        filter = str::FindChar(filter, L';') + 1;
+        filter = str::FindChar(filter, ';') + 1;
     }
     return MatchWildcardsRec(path, filter);
 }
 
-bool IsAbsolute(const WCHAR* path) {
-    return !PathIsRelative(path);
+bool IsAbsolute(const char* path) {
+    TempWStr ws = ToWStrTemp(path);
+    return !PathIsRelativeW(ws);
 }
+} // namespace path
 
 // returns the path to either the %TEMP% directory or a
 // non-existing file inside whose name starts with filePrefix
-WCHAR* GetTempFilePath(const WCHAR* filePrefix) {
-    WCHAR tempDir[MAX_PATH - 14] = {0};
+TempStr GetTempFilePathTemp(const char* filePrefix) {
+    WCHAR tempDir[MAX_PATH]{};
     DWORD res = ::GetTempPathW(dimof(tempDir), tempDir);
     if (!res || res >= dimof(tempDir)) {
         return nullptr;
     }
     if (!filePrefix) {
-        return str::Dup(tempDir);
+        return ToUtf8Temp(tempDir);
     }
-    WCHAR path[MAX_PATH] = {0};
-    if (!GetTempFileNameW(tempDir, filePrefix, 0, path)) {
+    WCHAR path[MAX_PATH]{};
+    WCHAR* filePrefixW = ToWStrTemp(filePrefix);
+    if (!GetTempFileNameW(tempDir, filePrefixW, 0, path)) {
         return nullptr;
     }
-    return str::Dup(path);
+    return ToUtf8Temp(path);
 }
 
 // returns a path to the application module's directory
 // with either the given fileName or the module's name
 // (module is the EXE or DLL in which path::GetPathOfFileInAppDir resides)
-WCHAR* GetPathOfFileInAppDir(const WCHAR* fileName) {
-    WCHAR modulePath[MAX_PATH] = {0};
-    GetModuleFileName(GetInstance(), modulePath, dimof(modulePath));
-    modulePath[dimof(modulePath) - 1] = '\0';
-    if (!fileName) {
-        return str::Dup(modulePath);
-    }
-    AutoFreeWstr moduleDir = path::GetDir(modulePath);
-    AutoFreeWstr path = path::Join(moduleDir, fileName);
-    return path::Normalize(path);
+TempStr GetPathInExeDirTemp(const char* fileName) {
+    TempStr dir = GetSelfExeDirTemp();
+    TempStr path = path::JoinTemp(dir, fileName);
+    path = path::NormalizeTemp(path);
+    return path;
 }
-} // namespace path
 
 namespace file {
 
 FILE* OpenFILE(const char* path) {
-    CrashIf(!path);
+    ReportIf(!path);
     if (!path) {
         return nullptr;
     }
-    auto pathW = ToWstrTemp(path);
-    return OpenFILE(pathW.Get());
+    WCHAR* pathW = ToWStrTemp(path);
+    return _wfopen(pathW, L"rb");
 }
 
 ByteSlice ReadFileWithAllocator(const char* filePath, Allocator* allocator) {
@@ -488,7 +532,7 @@ ByteSlice ReadFileWithAllocator(const char* filePath, Allocator* allocator) {
     if (addOverflows<size_t>(size, ZERO_PADDING_COUNT)) {
         goto Error;
     }
-    d = (char*)Allocator::AllocZero(allocator, size + ZERO_PADDING_COUNT);
+    d = Allocator::AllocArray<char>(allocator, size + ZERO_PADDING_COUNT);
     if (!d) {
         goto Error;
     }
@@ -507,7 +551,7 @@ ByteSlice ReadFileWithAllocator(const char* filePath, Allocator* allocator) {
         // either way shouldn't happen because we're reading the exact size of file
         // I've seen this in crash reports so maybe the files are over-written
         // between the time I do fseek() and fread()
-        CrashIf(!(isEof || (err != 0)));
+        ReportIf(!(isEof || (err != 0)));
         goto Error;
     }
 
@@ -518,53 +562,45 @@ Error:
 #endif
 }
 
-ByteSlice ReadFile(std::string_view path) {
-    return ReadFileWithAllocator(path.data(), nullptr);
+ByteSlice ReadFile(const char* path) {
+    return ReadFileWithAllocator(path, nullptr);
 }
 
-ByteSlice ReadFile(const WCHAR* filePath) {
-    auto path = ToUtf8Temp(filePath);
-    return ReadFileWithAllocator(path.Get(), nullptr);
-}
-
-bool WriteFile(const char* filePath, ByteSlice d) {
-    auto buf = ToWstrTemp(filePath);
-    return WriteFile(buf, d);
-}
-
-bool Exists(std::string_view path) {
-    WCHAR* wpath = ToWstrTemp(path);
-    bool exists = Exists(wpath);
-    return exists;
-}
-
-HANDLE OpenReadOnly(const WCHAR* filePath) {
-    return CreateFileW(filePath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-}
-
-HANDLE OpenReadOnly(std::string_view path) {
-    auto filePath = ToWstrTemp(path);
-    return CreateFileW(filePath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-}
-
-FILE* OpenFILE(const WCHAR* path) {
-    if (!path) {
-        return nullptr;
+bool WriteFile(const char* path, const ByteSlice& d) {
+    WCHAR* pathW = ToWStrTemp(path);
+    const void* data = d.data();
+    size_t dataLen = d.size();
+    DWORD access = GENERIC_WRITE;
+    DWORD share = FILE_SHARE_READ;
+    DWORD flags = FILE_ATTRIBUTE_NORMAL;
+    auto fh = CreateFileW(pathW, access, share, nullptr, CREATE_ALWAYS, flags, nullptr);
+    if (INVALID_HANDLE_VALUE == fh) {
+        return false;
     }
-    return _wfopen(path, L"rb");
+    AutoCloseHandle h(fh);
+
+    DWORD size = 0;
+    BOOL ok = WriteFile(h, data, (DWORD)dataLen, &size, nullptr);
+    ReportIf(ok && (dataLen != (size_t)size));
+    return ok && dataLen == (size_t)size;
 }
 
-bool Exists(const WCHAR* filePath) {
-    if (nullptr == filePath) {
+HANDLE OpenReadOnly(const char* path) {
+    WCHAR* filePath = ToWStrTemp(path);
+    return CreateFileW(filePath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+}
+
+bool Exists(const char* path) {
+    if (!path) {
         return false;
     }
 
+    WCHAR* pathW = ToWStrTemp(path);
     WIN32_FILE_ATTRIBUTE_DATA fileInfo;
-    BOOL res = GetFileAttributesEx(filePath, GetFileExInfoStandard, &fileInfo);
+    BOOL res = GetFileAttributesEx(pathW, GetFileExInfoStandard, &fileInfo);
     if (0 == res) {
         return false;
     }
-
     if (fileInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
         return false;
     }
@@ -572,13 +608,13 @@ bool Exists(const WCHAR* filePath) {
 }
 
 // returns -1 on error (can't use INVALID_FILE_SIZE because it won't cast right)
-i64 GetSize(std::string_view filePath) {
-    CrashIf(filePath.empty());
-    if (filePath.empty()) {
+i64 GetSize(const char* path) {
+    ReportIf(!path);
+    if (!path) {
         return -1;
     }
 
-    AutoCloseHandle h = OpenReadOnly(filePath);
+    AutoCloseHandle h = OpenReadOnly(path);
     if (!h.IsValid()) {
         return -1;
     }
@@ -593,15 +629,10 @@ i64 GetSize(std::string_view filePath) {
     return size.QuadPart;
 }
 
-ByteSlice ReadFileWithAllocator(const WCHAR* path, Allocator* allocator) {
-    auto pathA = ToUtf8Temp(path);
-    return ReadFileWithAllocator(pathA.Get(), allocator);
-}
-
 // buf must be at least toRead in size (note: it won't be zero-terminated)
 // returns -1 for error
-int ReadN(const WCHAR* filePath, char* buf, size_t toRead) {
-    AutoCloseHandle h = OpenReadOnly(filePath);
+int ReadN(const char* path, char* buf, size_t toRead) {
+    AutoCloseHandle h = OpenReadOnly(path);
     if (h == INVALID_HANDLE_VALUE) {
         return false;
     }
@@ -615,40 +646,12 @@ int ReadN(const WCHAR* filePath, char* buf, size_t toRead) {
     return (int)nRead;
 }
 
-bool WriteFile(const WCHAR* filePath, ByteSlice d) {
-    const void* data = d.data();
-    size_t dataLen = d.size();
-    DWORD access = GENERIC_WRITE;
-    DWORD share = FILE_SHARE_READ;
-    DWORD flags = FILE_ATTRIBUTE_NORMAL;
-    auto fh = CreateFileW(filePath, access, share, nullptr, CREATE_ALWAYS, flags, nullptr);
-    if (INVALID_HANDLE_VALUE == fh) {
-        return false;
-    }
-    AutoCloseHandle h(fh);
-
-    DWORD size = 0;
-    BOOL ok = WriteFile(h, data, (DWORD)dataLen, &size, nullptr);
-    CrashIf(ok && (dataLen != (size_t)size));
-    return ok && dataLen == (size_t)size;
-}
-
 // Return true if the file wasn't there or was successfully deleted
-bool Delete(const WCHAR* filePath) {
-    BOOL ok = DeleteFileW(filePath);
-    ok |= (GetLastError() == ERROR_FILE_NOT_FOUND);
-    if (!ok) {
-        LogLastError();
-        return false;
-    }
-    return true;
-}
-
 bool Delete(const char* filePathA) {
     if (!filePathA) {
         return false;
     }
-    WCHAR* filePath = ToWstrTemp(filePathA);
+    WCHAR* filePath = ToWStrTemp(filePathA);
     BOOL ok = DeleteFileW(filePath);
     ok |= (GetLastError() == ERROR_FILE_NOT_FOUND);
     if (!ok) {
@@ -658,8 +661,22 @@ bool Delete(const char* filePathA) {
     return true;
 }
 
-bool Copy(const WCHAR* dst, const WCHAR* src, bool dontOverwrite) {
-    BOOL ok = CopyFileW(src, dst, (BOOL)dontOverwrite);
+bool DeleteFileToTrash(const char* path) {
+    TempWStr pathW = ToWStrTemp(path);
+    auto n = str::Len(pathW) + 2;
+    WCHAR* pathDoubleTerminated = AllocArrayTemp<WCHAR>(n);
+    str::BufSet(pathDoubleTerminated, (int)n, pathW);
+    FILEOP_FLAGS flags = FOF_NO_UI | FOF_ALLOWUNDO;
+    uint op = FO_DELETE;
+    SHFILEOPSTRUCTW shfo = {nullptr, op, pathDoubleTerminated, nullptr, flags, FALSE, nullptr, nullptr};
+    int res = SHFileOperationW(&shfo);
+    return res == 0;
+}
+
+bool Copy(const char* dst, const char* src, bool dontOverwrite) {
+    WCHAR* dstW = ToWStrTemp(dst);
+    WCHAR* srcW = ToWStrTemp(src);
+    BOOL ok = CopyFileW(srcW, dstW, (BOOL)dontOverwrite);
     if (!ok) {
         LogLastError();
         return false;
@@ -667,17 +684,8 @@ bool Copy(const WCHAR* dst, const WCHAR* src, bool dontOverwrite) {
     return true;
 }
 
-FILETIME GetModificationTime(const WCHAR* filePath) {
-    FILETIME lastMod = {0};
-    AutoCloseHandle h(OpenReadOnly(filePath));
-    if (h.IsValid()) {
-        GetFileTime(h, nullptr, nullptr, &lastMod);
-    }
-    return lastMod;
-}
-
 FILETIME GetModificationTime(const char* filePath) {
-    FILETIME lastMod = {0};
+    FILETIME lastMod{};
     AutoCloseHandle h(OpenReadOnly(filePath));
     if (h.IsValid()) {
         GetFileTime(h, nullptr, nullptr, &lastMod);
@@ -685,8 +693,21 @@ FILETIME GetModificationTime(const char* filePath) {
     return lastMod;
 }
 
-bool SetModificationTime(const WCHAR* filePath, FILETIME lastMod) {
-    AutoCloseHandle h(CreateFile(filePath, GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr));
+DWORD GetAttributes(const char* path) {
+    WCHAR* pathW = ToWStrTemp(path);
+    return GetFileAttributesW(pathW);
+}
+
+bool SetAttributes(const char* path, DWORD attrs) {
+    WCHAR* pathW = ToWStrTemp(path);
+    return SetFileAttributesW(pathW, attrs);
+}
+
+bool SetModificationTime(const char* path, FILETIME lastMod) {
+    WCHAR* pathW = ToWStrTemp(path);
+    DWORD access = GENERIC_READ | GENERIC_WRITE;
+    DWORD disp = OPEN_EXISTING;
+    AutoCloseHandle h(CreateFileW(pathW, access, 0, nullptr, disp, 0, nullptr));
     if (INVALID_HANDLE_VALUE == h) {
         return false;
     }
@@ -694,40 +715,39 @@ bool SetModificationTime(const WCHAR* filePath, FILETIME lastMod) {
 }
 
 // return true if a file starts with string s of size len
-bool StartsWithN(const WCHAR* filePath, const char* s, size_t len) {
-    AutoFree buf(AllocArray<char>(len));
+bool StartsWithN(const char* path, const char* s, size_t len) {
+    char* buf = AllocArrayTemp<char>(len);
     if (!buf) {
         return false;
     }
-
-    if (!ReadN(filePath, buf.Get(), len)) {
+    if (!ReadN(path, buf, len)) {
         return false;
     }
     return memeq(buf, s, len);
 }
 
 // return true if a file starts with null-terminated string s
-bool StartsWith(const WCHAR* filePath, const char* s) {
-    return file::StartsWithN(filePath, s, str::Len(s));
+bool StartsWith(const char* path, const char* s) {
+    return file::StartsWithN(path, s, str::Len(s));
 }
 
 int GetZoneIdentifier(const char* filePath) {
-    AutoFreeStr path(str::Join(filePath, ":Zone.Identifier"));
-    auto pathW = ToWstrTemp(path.AsView());
+    char* path = str::JoinTemp(filePath, ":Zone.Identifier");
+    WCHAR* pathW = ToWStrTemp(path);
     return GetPrivateProfileIntW(L"ZoneTransfer", L"ZoneId", URLZONE_INVALID, pathW);
 }
 
 bool SetZoneIdentifier(const char* filePath, int zoneId) {
-    AutoFreeStr path(str::Join(filePath, ":Zone.Identifier"));
-    AutoFreeWstr id(str::Format(L"%d", zoneId));
-    auto pathW = ToWstrTemp(path.AsView());
-    return WritePrivateProfileStringW(L"ZoneTransfer", L"ZoneId", id, pathW);
+    TempStr path = str::JoinTemp(filePath, ":Zone.Identifier");
+    TempStr id = str::FormatTemp("%d", zoneId);
+    TempWStr idw = ToWStrTemp(id);
+    TempWStr pathW = ToWStrTemp(path);
+    return WritePrivateProfileStringW(L"ZoneTransfer", L"ZoneId", idw, pathW);
 }
 
 bool DeleteZoneIdentifier(const char* filePath) {
-    AutoFreeStr path(str::Join(filePath, ":Zone.Identifier"));
-    auto pathW = ToWstrTemp(path.AsView());
-    return !!DeleteFileW(pathW);
+    char* path = str::JoinTemp(filePath, ":Zone.Identifier");
+    return Delete(path);
 }
 
 } // namespace file
@@ -748,10 +768,25 @@ bool Exists(const WCHAR* dir) {
 
     return (fileInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
 }
+bool Exists(const char* dirA) {
+    if (nullptr == dirA) {
+        return false;
+    }
+    WCHAR* dir = ToWStrTemp(dirA);
+
+    WIN32_FILE_ATTRIBUTE_DATA fileInfo;
+    BOOL res = GetFileAttributesEx(dir, GetFileExInfoStandard, &fileInfo);
+    if (0 == res) {
+        return false;
+    }
+
+    return (fileInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+}
 
 // Return true if a directory already exists or has been successfully created
-bool Create(const WCHAR* dir) {
-    BOOL ok = CreateDirectoryW(dir, nullptr);
+bool Create(const char* dir) {
+    TempWStr dirW = ToWStrTemp(dir);
+    BOOL ok = CreateDirectoryW(dirW, nullptr);
     if (ok) {
         return true;
     }
@@ -759,29 +794,30 @@ bool Create(const WCHAR* dir) {
 }
 
 // creates a directory and all its parent directories that don't exist yet
-bool CreateAll(const WCHAR* dir) {
-    AutoFreeWstr parent(path::GetDir(dir));
+bool CreateAll(const char* dir) {
+    TempStr parent = path::GetDirTemp(dir);
     if (!str::Eq(parent, dir) && !Exists(parent)) {
         CreateAll(parent);
     }
     return Create(dir);
 }
 
-bool CreateForFile(const WCHAR* path) {
-    AutoFreeWstr dir(path::GetDir(path));
+bool CreateForFile(const char* path) {
+    TempStr dir = path::GetDirTemp(path);
     return CreateAll(dir);
 }
 
 // remove directory and all its children
-bool RemoveAll(const WCHAR* dir) {
+bool RemoveAll(const char* dir) {
+    TempWStr dirW = ToWStrTemp(dir);
     // path must be doubly terminated
-    // (https://docs.microsoft.com/en-us/windows/desktop/api/shellapi/ns-shellapi-_shfileopstructa)
-    size_t n = str::Len(dir) + 2;
-    AutoFreeWstr path = AllocArray<WCHAR>(n);
-    str::BufSet(path, n, dir);
+    // https://docs.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-shfileopstructa#fo_rename
+    auto n = str::Len(dirW) + 2;
+    WCHAR* dirDoubleTerminated = AllocArrayTemp<WCHAR>(n);
+    str::BufSet(dirDoubleTerminated, (int)n, dirW);
     FILEOP_FLAGS flags = FOF_NO_UI;
     uint op = FO_DELETE;
-    SHFILEOPSTRUCTW shfo = {nullptr, op, path, nullptr, flags, FALSE, nullptr, nullptr};
+    SHFILEOPSTRUCTW shfo = {nullptr, op, dirDoubleTerminated, nullptr, flags, FALSE, nullptr, nullptr};
     int res = SHFileOperationW(&shfo);
     return res == 0;
 }

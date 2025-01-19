@@ -1,8 +1,6 @@
 package main
 
-import (
-	"github.com/kjk/u"
-)
+import "github.com/kjk/common/u"
 
 // return false to exclude a file
 func excludeFiles(s string) bool {

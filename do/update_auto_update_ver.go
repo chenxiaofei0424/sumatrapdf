@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/kjk/minioutil"
 )
 
 // Format of auto-update file:
@@ -42,25 +44,35 @@ func validateVer(ver string) {
 
 func updateAutoUpdateVer(ver string) {
 	validateVer(ver)
-	// TODO: verify it's bigger than the current vresion
+	// TODO: verify it's bigger than the current version
 	// TODO: add download links
 	s := fmt.Sprintf(`[SumatraPDF]
 Latest %s
 `, ver)
 	fmt.Printf("Content of update file:\n%s\n\n", s)
-	c := newS3Client()
-	{
-		remotePath := "sumatrapdf/sumpdf-update.txt"
-		err := c.UploadString(remotePath, s, true)
-		must(err)
+	d := []byte(s)
+
+	uploadInfo := func(mc *minioutil.Client) {
+		{
+			remotePath := "sumatrapdf/sumpdf-update.txt"
+			_, err := mc.UploadData(remotePath, d, true)
+			must(err)
+		}
+		{
+			remotePath := "sumatrapdf/sumpdf-latest.txt"
+			_, err := mc.UploadData(remotePath, d, true)
+			must(err)
+		}
 	}
-	{
-		remotePath := "sumatrapdf/sumpdf-latest.txt"
-		err := c.UploadString(remotePath, s, true)
-		must(err)
-	}
+
+	// TODO: anyone using those for update info?
+	//uploadInfo(newMinioSpacesClient())
+	//uploadInfo(newMinioS3Client())
+	uploadInfo(newMinioBackblazeClient())
+	uploadInfo(newMinioR2Client())
 
 	path := filepath.Join("website", "update-check-rel.txt")
 	writeFileMust(path, []byte(s))
+
 	fmt.Printf("Don't forget to checkin file '%s' and deploy website\n", path)
 }

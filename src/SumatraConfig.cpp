@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 #include "utils/BaseUtil.h"
@@ -41,16 +41,9 @@ const char* preReleaseVersion = nullptr;
 #endif
 
 #if defined(GIT_COMMIT_ID)
-const char* gitSha1 = QM(GIT_COMMIT_ID);
+const char* gitCommidId = QM(GIT_COMMIT_ID);
 #else
-const char* gitSha1 = nullptr;
-#endif
-
-// experimental, unfinished theme support for menus by making them owner-drawn
-#if defined(EXP_MENU_OWNER_DRAW)
-bool gOwnerDrawMenu = true;
-#else
-bool gOwnerDrawMenu = false;
+const char* gitCommidId = nullptr;
 #endif
 
 #ifdef DISABLE_DOCUMENT_RESTRICTIONS
@@ -59,13 +52,7 @@ bool gDisableDocumentRestrictions = true;
 bool gDisableDocumentRestrictions = false;
 #endif
 
-const WCHAR* GetAppNameTemp() {
-    return L"SumatraPDF";
-}
-
-const WCHAR* GetExeNameTemp() {
-    return L"SumatraPDF.exe";
-}
+bool gIsStoreBuild = false;
 
 int GetAppIconID() {
     return IDI_SUMATRAPDF;

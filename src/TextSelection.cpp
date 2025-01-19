@@ -1,13 +1,13 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
 #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
 
-#include "wingui/TreeModel.h"
-#include "DisplayMode.h"
-#include "Controller.h"
+#include "wingui/UIModels.h"
+
+#include "DocController.h"
 #include "EngineBase.h"
 #include "TextSelection.h"
 
@@ -30,8 +30,8 @@ DocumentTextCache::DocumentTextCache(EngineBase* engine) : engine(engine) {
 DocumentTextCache::~DocumentTextCache() {
     EnterCriticalSection(&access);
 
-    int nPages = engine->PageCount();
-    for (int i = 0; i < nPages; i++) {
+    int n = engine->PageCount();
+    for (int i = 0; i < n; i++) {
         PageText* pageText = &pagesText[i];
         free(pageText->coords);
         free(pageText->text);
@@ -42,13 +42,13 @@ DocumentTextCache::~DocumentTextCache() {
 }
 
 bool DocumentTextCache::HasTextForPage(int pageNo) const {
-    CrashIf(pageNo < 1 || pageNo > nPages);
+    ReportIf(pageNo < 1 || pageNo > nPages);
     PageText* pageText = &pagesText[pageNo - 1];
     return pageText->text != nullptr;
 }
 
 const WCHAR* DocumentTextCache::GetTextForPage(int pageNo, int* lenOut, Rect** coordsOut) {
-    CrashIf(pageNo < 1 || pageNo > nPages);
+    ReportIf(pageNo < 1 || pageNo > nPages);
 
     ScopedCritSec scope(&access);
     PageText* pageText = &pagesText[pageNo - 1];
@@ -126,7 +126,7 @@ static int FindClosestGlyph(TextSelection* ts, int pageNo, double x, double y) {
     if (-1 == result) {
         return 0;
     }
-    CrashIf(result < 0 || result >= textLen);
+    ReportIf(result < 0 || result >= textLen);
 
     // the result indexes the first glyph to be selected in a forward selection
     RectF bbox = ts->engine->Transform(ToRectF(coords[result]), pageNo, 1.0, 0);
@@ -138,16 +138,16 @@ static int FindClosestGlyph(TextSelection* ts, int pageNo, double x, double y) {
             result++;
         }
     }
-    CrashIf(result > 0 && result < textLen && coords[result] == coords[result - 1]);
+    ReportIf(result > 0 && result < textLen && coords[result] == coords[result - 1]);
 
     return result;
 }
 
-static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length, WStrVec* lines = nullptr) {
+static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length, StrVec* lines = nullptr) {
     int len;
     Rect* coords;
     const WCHAR* text = ts->textCache->GetTextForPage(pageNo, &len, &coords);
-    CrashIf(len < glyph + length);
+    ReportIf(len < glyph + length);
     Rect mediabox = ts->engine->PageMediabox(pageNo).Round();
     Rect *c = &coords[glyph], *end = c + length;
     while (c < end) {
@@ -167,7 +167,8 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
         }
 
         if (lines) {
-            lines->Append(str::Dup(text + (c0 - coords), c - c0));
+            char* s = ToUtf8Temp(text + (c0 - coords), c - c0);
+            lines->Append(s);
             continue;
         }
 
@@ -178,7 +179,7 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
 
         int currLen = ts->result.len;
         int left = ts->result.cap - currLen;
-        CrashIf(left < 0);
+        ReportIf(left < 0);
         if (left == 0) {
             int newCap = ts->result.cap * 2;
             if (newCap < 64) {
@@ -186,8 +187,8 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
             }
             int* newPages = (int*)realloc(ts->result.pages, sizeof(int) * newCap);
             Rect* newRects = (Rect*)realloc(ts->result.rects, sizeof(Rect) * newCap);
-            CrashIf(!newPages);
-            CrashIf(!newRects);
+            ReportIf(!newPages);
+            ReportIf(!newRects);
             ts->result.pages = newPages;
             ts->result.rects = newRects;
             ts->result.cap = newCap;
@@ -294,8 +295,8 @@ void TextSelection::CopySelection(TextSelection* orig) {
     SelectUpTo(orig->endPage, orig->endGlyph);
 }
 
-WCHAR* TextSelection::ExtractText(const WCHAR* lineSep) {
-    WStrVec lines;
+WCHAR* TextSelection::ExtractText(const char* lineSep) {
+    StrVec lines;
 
     int fromPage, fromGlyph, toPage, toGlyph;
     GetGlyphRange(&fromPage, &fromGlyph, &toPage, &toGlyph);
@@ -310,7 +311,8 @@ WCHAR* TextSelection::ExtractText(const WCHAR* lineSep) {
         }
     }
 
-    return lines.Join(lineSep);
+    TempStr res = JoinTemp(&lines, lineSep);
+    return ToWStr(res);
 }
 
 void TextSelection::GetGlyphRange(int* fromPage, int* fromGlyph, int* toPage, int* toGlyph) const {

@@ -3,12 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
-
-	"github.com/kjk/u"
 )
 
 // https://goobar.io/2019/12/07/manually-trigger-a-github-actions-workflow/
@@ -19,21 +16,22 @@ func triggerBuildWebHook(typ string) {
 	data := fmt.Sprintf(`{"event_type": "%s"}`, typ)
 	uri := "https://api.github.com/repos/sumatrapdfreader/sumatrapdf/dispatches"
 	req, err := http.NewRequest(http.MethodPost, uri, strings.NewReader(data))
-	u.Must(err)
+	must(err)
 	req.Header.Set("Accept", "application/vnd.github.everest-preview+json")
 	val := fmt.Sprintf("token %s", ghtoken)
 	req.Header.Set("Authorization", val)
 	rsp, err := http.DefaultClient.Do(req)
-	u.Must(err)
+	must(err)
 	panicIf(rsp.StatusCode >= 400)
 }
 
 const (
 	githubEventTypeCodeQL = "codeql"
 	githubEventPush       = "push"
+	githubEventCron       = "schedule"
 )
 
-//  "action": "build-pre-rel"
+// "action": "build-pre-rel"
 type gitHubEventJSON struct {
 	Action string `json:"action"`
 }
@@ -45,7 +43,7 @@ func getGitHubEventType() string {
 		return githubEventPush
 	}
 	path := os.Getenv("GITHUB_EVENT_PATH")
-	d, err := ioutil.ReadFile(path)
+	d, err := os.ReadFile(path)
 	must(err)
 	var js gitHubEventJSON
 	err = json.Unmarshal(d, &js)
@@ -57,14 +55,4 @@ func getGitHubEventType() string {
 	}
 	panicIf(true, "invalid js.Action of '%s'", js.Action)
 	return ""
-}
-
-// https://help.github.com/en/actions/configuring-and-managing-workflows/using-environment-variables#default-environment-variables
-func dumpWebHookEventPayload() {
-	v := os.Getenv("GITHUB_EVENT_PATH")
-	d, err := ioutil.ReadFile(v)
-	if err != nil {
-		fmt.Printf("dumpWebHookEventPayload: GITHUB_EVENT_PATH='%s' and is not a file\n", v)
-	}
-	fmt.Printf("dumpWebHookEventPayload: GITHUB_EVENT_PATH='%s'. Content:\n%s\n", v, string(d))
 }

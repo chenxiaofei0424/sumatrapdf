@@ -40,7 +40,7 @@
 
 
 /**
- * hb_set_create: (Xconstructor)
+ * hb_set_create:
  *
  * Creates a new, initially empty set.
  *
@@ -55,8 +55,6 @@ hb_set_create ()
 
   if (!(set = hb_object_create<hb_set_t> ()))
     return hb_set_get_empty ();
-
-  set->init_shallow ();
 
   return set;
 }
@@ -107,9 +105,7 @@ hb_set_destroy (hb_set_t *set)
 {
   if (!hb_object_destroy (set)) return;
 
-  set->fini_shallow ();
-
-  free (set);
+  hb_free (set);
 }
 
 /**
@@ -117,12 +113,12 @@ hb_set_destroy (hb_set_t *set)
  * @set: A set
  * @key: The user-data key to set
  * @data: A pointer to the user data to set
- * @destroy: (optional): A callback to call when @data is not needed anymore
+ * @destroy: (nullable): A callback to call when @data is not needed anymore
  * @replace: Whether to replace an existing data with the same key
  *
  * Attaches a user-data key/data pair to the specified set.
  *
- * Return value: %true if success, %false otherwise
+ * Return value: `true` if success, `false` otherwise
  *
  * Since: 0.9.2
  **/
@@ -149,7 +145,7 @@ hb_set_set_user_data (hb_set_t           *set,
  * Since: 0.9.2
  **/
 void *
-hb_set_get_user_data (hb_set_t           *set,
+hb_set_get_user_data (const hb_set_t     *set,
 		      hb_user_data_key_t *key)
 {
   return hb_object_get_user_data (set, key);
@@ -162,14 +158,33 @@ hb_set_get_user_data (hb_set_t           *set,
  *
  * Tests whether memory allocation for a set was successful.
  *
- * Return value: %true if allocation succeeded, false otherwise
+ * Return value: `true` if allocation succeeded, `false` otherwise
  *
  * Since: 0.9.2
  **/
 hb_bool_t
 hb_set_allocation_successful (const hb_set_t  *set)
 {
-  return set->successful;
+  return !set->in_error ();
+}
+
+/**
+ * hb_set_copy:
+ * @set: A set
+ *
+ * Allocate a copy of @set.
+ *
+ * Return value: Newly-allocated set.
+ *
+ * Since: 2.8.2
+ **/
+hb_set_t *
+hb_set_copy (const hb_set_t *set)
+{
+  hb_set_t *copy = hb_set_create ();
+  if (unlikely (!copy)) return nullptr;
+  copy->set (*set);
+  return copy;
 }
 
 /**
@@ -183,6 +198,7 @@ hb_set_allocation_successful (const hb_set_t  *set)
 void
 hb_set_clear (hb_set_t *set)
 {
+  /* Immutible-safe. */
   set->clear ();
 }
 
@@ -192,7 +208,7 @@ hb_set_clear (hb_set_t *set)
  *
  * Tests whether a set is empty (contains no elements).
  *
- * Return value: %true if @set is empty
+ * Return value: `true` if @set is empty
  *
  * Since: 0.9.7
  **/
@@ -209,7 +225,7 @@ hb_set_is_empty (const hb_set_t *set)
  *
  * Tests whether @codepoint belongs to @set.
  *
- * Return value: %true if @codepoint is in @set, false otherwise
+ * Return value: `true` if @codepoint is in @set, `false` otherwise
  *
  * Since: 0.9.2
  **/
@@ -233,7 +249,31 @@ void
 hb_set_add (hb_set_t       *set,
 	    hb_codepoint_t  codepoint)
 {
+  /* Immutible-safe. */
   set->add (codepoint);
+}
+
+/**
+ * hb_set_add_sorted_array:
+ * @set: A set
+ * @sorted_codepoints: (array length=num_codepoints): Array of codepoints to add
+ * @num_codepoints: Length of @sorted_codepoints
+ *
+ * Adds @num_codepoints codepoints to a set at once.
+ * The codepoints array must be in increasing order,
+ * with size at least @num_codepoints.
+ *
+ * Since: 4.1.0
+ */
+HB_EXTERN void
+hb_set_add_sorted_array (hb_set_t             *set,
+		         const hb_codepoint_t *sorted_codepoints,
+		         unsigned int          num_codepoints)
+{
+  /* Immutible-safe. */
+  set->add_sorted_array (sorted_codepoints,
+		         num_codepoints,
+		         sizeof(hb_codepoint_t));
 }
 
 /**
@@ -252,6 +292,7 @@ hb_set_add_range (hb_set_t       *set,
 		  hb_codepoint_t  first,
 		  hb_codepoint_t  last)
 {
+  /* Immutible-safe. */
   set->add_range (first, last);
 }
 
@@ -268,6 +309,7 @@ void
 hb_set_del (hb_set_t       *set,
 	    hb_codepoint_t  codepoint)
 {
+  /* Immutible-safe. */
   set->del (codepoint);
 }
 
@@ -280,6 +322,9 @@ hb_set_del (hb_set_t       *set,
  * Removes all of the elements from @first to @last
  * (inclusive) from @set.
  *
+ * If @last is #HB_SET_VALUE_INVALID, then all values
+ * greater than or equal to @first are removed.
+ *
  * Since: 0.9.7
  **/
 void
@@ -287,6 +332,7 @@ hb_set_del_range (hb_set_t       *set,
 		  hb_codepoint_t  first,
 		  hb_codepoint_t  last)
 {
+  /* Immutible-safe. */
   set->del_range (first, last);
 }
 
@@ -298,7 +344,7 @@ hb_set_del_range (hb_set_t       *set,
  * Tests whether @set and @other are equal (contain the same
  * elements).
  *
- * Return value: %TRUE if the two sets are equal, %FALSE otherwise.
+ * Return value: `true` if the two sets are equal, `false` otherwise.
  *
  * Since: 0.9.7
  **/
@@ -306,7 +352,24 @@ hb_bool_t
 hb_set_is_equal (const hb_set_t *set,
 		 const hb_set_t *other)
 {
-  return set->is_equal (other);
+  return set->is_equal (*other);
+}
+
+/**
+ * hb_set_hash:
+ * @set: A set
+ *
+ * Creates a hash representing @set.
+ *
+ * Return value:
+ * A hash of @set.
+ *
+ * Since: 4.4.0
+ **/
+HB_EXTERN unsigned int
+hb_set_hash (const hb_set_t *set)
+{
+  return set->hash ();
 }
 
 /**
@@ -316,7 +379,7 @@ hb_set_is_equal (const hb_set_t *set,
  *
  * Tests whether @set is a subset of @larger_set.
  *
- * Return value: %TRUE if the @set is a subset of (or equal to) @larger_set, %FALSE otherwise.
+ * Return value: `true` if the @set is a subset of (or equal to) @larger_set, `false` otherwise.
  *
  * Since: 1.8.1
  **/
@@ -324,7 +387,7 @@ hb_bool_t
 hb_set_is_subset (const hb_set_t *set,
 		  const hb_set_t *larger_set)
 {
-  return set->is_subset (larger_set);
+  return set->is_subset (*larger_set);
 }
 
 /**
@@ -340,7 +403,8 @@ void
 hb_set_set (hb_set_t       *set,
 	    const hb_set_t *other)
 {
-  set->set (other);
+  /* Immutible-safe. */
+  set->set (*other);
 }
 
 /**
@@ -356,7 +420,8 @@ void
 hb_set_union (hb_set_t       *set,
 	      const hb_set_t *other)
 {
-  set->union_ (other);
+  /* Immutible-safe. */
+  set->union_ (*other);
 }
 
 /**
@@ -372,7 +437,8 @@ void
 hb_set_intersect (hb_set_t       *set,
 		  const hb_set_t *other)
 {
-  set->intersect (other);
+  /* Immutible-safe. */
+  set->intersect (*other);
 }
 
 /**
@@ -388,7 +454,8 @@ void
 hb_set_subtract (hb_set_t       *set,
 		 const hb_set_t *other)
 {
-  set->subtract (other);
+  /* Immutible-safe. */
+  set->subtract (*other);
 }
 
 /**
@@ -405,25 +472,24 @@ void
 hb_set_symmetric_difference (hb_set_t       *set,
 			     const hb_set_t *other)
 {
-  set->symmetric_difference (other);
+  /* Immutible-safe. */
+  set->symmetric_difference (*other);
 }
 
-#ifndef HB_DISABLE_DEPRECATED
 /**
  * hb_set_invert:
  * @set: A set
  *
  * Inverts the contents of @set.
  *
- * Since: 0.9.10
- *
- * Deprecated: 1.6.1
+ * Since: 3.0.0
  **/
 void
-hb_set_invert (hb_set_t *set HB_UNUSED)
+hb_set_invert (hb_set_t *set)
 {
+  /* Immutible-safe. */
+  set->invert ();
 }
-#endif
 
 /**
  * hb_set_get_population:
@@ -447,7 +513,7 @@ hb_set_get_population (const hb_set_t *set)
  *
  * Finds the smallest element in the set.
  *
- * Return value: minimum of @set, or %HB_SET_VALUE_INVALID if @set is empty.
+ * Return value: minimum of @set, or #HB_SET_VALUE_INVALID if @set is empty.
  *
  * Since: 0.9.7
  **/
@@ -463,7 +529,7 @@ hb_set_get_min (const hb_set_t *set)
  *
  * Finds the largest element in the set.
  *
- * Return value: maximum of @set, or %HB_SET_VALUE_INVALID if @set is empty.
+ * Return value: maximum of @set, or #HB_SET_VALUE_INVALID if @set is empty.
  *
  * Since: 0.9.7
  **/
@@ -481,9 +547,9 @@ hb_set_get_max (const hb_set_t *set)
  *
  * Fetches the next element in @set that is greater than current value of @codepoint.
  *
- * Set @codepoint to %HB_SET_VALUE_INVALID to get started.
+ * Set @codepoint to #HB_SET_VALUE_INVALID to get started.
  *
- * Return value: %true if there was a next value, false otherwise
+ * Return value: `true` if there was a next value, `false` otherwise
  *
  * Since: 0.9.2
  **/
@@ -502,9 +568,9 @@ hb_set_next (const hb_set_t *set,
  *
  * Fetches the previous element in @set that is lower than current value of @codepoint.
  *
- * Set @codepoint to %HB_SET_VALUE_INVALID to get started.
+ * Set @codepoint to #HB_SET_VALUE_INVALID to get started.
  *
- * Return value: %true if there was a previous value, false otherwise
+ * Return value: `true` if there was a previous value, `false` otherwise
  *
  * Since: 1.8.0
  **/
@@ -525,9 +591,9 @@ hb_set_previous (const hb_set_t *set,
  * Fetches the next consecutive range of elements in @set that
  * are greater than current value of @last.
  *
- * Set @last to %HB_SET_VALUE_INVALID to get started.
+ * Set @last to #HB_SET_VALUE_INVALID to get started.
  *
- * Return value: %true if there was a next range, false otherwise
+ * Return value: `true` if there was a next range, `false` otherwise
  *
  * Since: 0.9.7
  **/
@@ -549,9 +615,9 @@ hb_set_next_range (const hb_set_t *set,
  * Fetches the previous consecutive range of elements in @set that
  * are greater than current value of @last.
  *
- * Set @first to %HB_SET_VALUE_INVALID to get started.
+ * Set @first to #HB_SET_VALUE_INVALID to get started.
  *
- * Return value: %true if there was a previous range, false otherwise
+ * Return value: `true` if there was a previous range, `false` otherwise
  *
  * Since: 1.8.0
  **/
@@ -561,4 +627,29 @@ hb_set_previous_range (const hb_set_t *set,
 		       hb_codepoint_t *last)
 {
   return set->previous_range (first, last);
+}
+
+/**
+ * hb_set_next_many:
+ * @set: A set
+ * @codepoint: Outputting codepoints starting after this one.
+ *             Use #HB_SET_VALUE_INVALID to get started.
+ * @out: (array length=size): An array of codepoints to write to.
+ * @size: The maximum number of codepoints to write out.
+ *
+ * Finds the next element in @set that is greater than @codepoint. Writes out
+ * codepoints to @out, until either the set runs out of elements, or @size
+ * codepoints are written, whichever comes first.
+ *
+ * Return value: the number of values written.
+ *
+ * Since: 4.2.0
+ **/
+unsigned int
+hb_set_next_many (const hb_set_t *set,
+		  hb_codepoint_t  codepoint,
+		  hb_codepoint_t *out,
+		  unsigned int    size)
+{
+  return set->next_many (codepoint, out, size);
 }

@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
@@ -8,13 +8,10 @@
 #include "utils/GuessFileType.h"
 #include "utils/HtmlParserLookup.h"
 #include "utils/TrivialHtmlParser.h"
-#include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
 
-#include "wingui/TreeModel.h"
-#include "DisplayMode.h"
-#include "Controller.h"
-#include "EngineBase.h"
+#include "DocController.h"
+#include "DocProperties.h"
 #include "EbookBase.h"
 #include "ChmFile.h"
 
@@ -63,42 +60,39 @@ ByteSlice ChmFile::GetData(const char* fileName) const {
     }
 
     // +1 for 0 terminator for C string compatibility
-    u8* data = AllocArray<u8>(len + 1);
-    if (!data) {
+    u8* d = AllocArray<u8>(len + 1);
+    if (!d) {
         return {};
     }
-    if (!chm_retrieve_object(chmHandle, &info, data, 0, len)) {
+    if (!chm_retrieve_object(chmHandle, &info, d, 0, len)) {
         return {};
     }
 
-    return {data, len};
+    return {d, len};
 }
 
-char* ChmFile::ToUtf8(const u8* text, uint overrideCP) const {
-    const char* s = (char*)text;
+TempStr ChmFile::SmartToUtf8Temp(const char* s, uint overrideCP) const {
     if (str::StartsWith(s, UTF8_BOM)) {
-        return str::Dup(s + 3);
+        return str::DupTemp(s + 3);
     }
     if (overrideCP) {
-        return (char*)strconv::ToMultiByteV(s, overrideCP, CP_UTF8).data();
+        TempStr res = strconv::ToMultiByteTemp(s, overrideCP, CP_UTF8);
+        return res;
     }
     if (CP_UTF8 == codepage) {
-        return str::Dup(s);
+        return str::DupTemp(s);
     }
-    return (char*)strconv::ToMultiByteV(s, codepage, CP_UTF8).data();
+    TempStr res = strconv::ToMultiByteTemp(s, codepage, CP_UTF8);
+    return res;
 }
 
-WCHAR* ChmFile::ToStr(const char* text) const {
-    return strconv::StrToWstr(text, codepage);
-}
-
-static char* GetCharZ(ByteSlice d, size_t off) {
+static char* GetCharZ(const ByteSlice& d, size_t off) {
     u8* data = d.data();
     size_t len = d.size();
     if (off >= len) {
         return nullptr;
     }
-    CrashIf(!memchr(data + off, '\0', len - off + 1)); // data is zero-terminated
+    ReportIf(!memchr(data + off, '\0', len - off + 1)); // data is zero-terminated
     u8* str = data + off;
     if (str::IsEmpty((const char*)str)) {
         return nullptr;
@@ -108,9 +102,12 @@ static char* GetCharZ(ByteSlice d, size_t off) {
 
 // http://www.nongnu.org/chmspec/latest/Internal.html#WINDOWS
 void ChmFile::ParseWindowsData() {
-    AutoFree windowsData = GetData("/#WINDOWS");
-    auto stringsData = GetData("/#STRINGS");
+    ByteSlice windowsData = GetData("/#WINDOWS");
+    ByteSlice stringsData = GetData("/#STRINGS");
+
     AutoFree stringsDataFree(stringsData);
+    AutoFree windowsDataFree(windowsData);
+
     if (windowsData.empty() || stringsData.empty()) {
         return;
     }
@@ -119,7 +116,7 @@ void ChmFile::ParseWindowsData() {
         return;
     }
 
-    ByteReader rw(windowsData, windowsLen);
+    ByteReader rw(windowsData);
     size_t entries = rw.DWordLE(0);
     size_t entrySize = rw.DWordLE(4);
     if (entrySize < 188) {
@@ -159,7 +156,7 @@ static uint LcidToCodepage(DWORD lcid) {
         {1042, 949},  {1045, 1250}, {1049, 1251}, {1051, 1250}, {1060, 1250}, {1055, 1254}, {1026, 1251}, {4, 936},
     };
 
-    for (int i = 0; i < dimof(lcidToCodepage); i++) {
+    for (int i = 0; i < dimofi(lcidToCodepage); i++) {
         if (lcid == lcidToCodepage[i].lcid) {
             return lcidToCodepage[i].codepage;
         }
@@ -170,16 +167,16 @@ static uint LcidToCodepage(DWORD lcid) {
 
 // http://www.nongnu.org/chmspec/latest/Internal.html#SYSTEM
 bool ChmFile::ParseSystemData() {
-    auto data = GetData("/#SYSTEM");
-    if (data.empty()) {
+    ByteSlice d = GetData("/#SYSTEM");
+    if (d.empty()) {
         return false;
     }
-    AutoFree dataFree = data;
+    AutoFree dataFree = d.Get();
 
-    ByteReader r(data);
+    ByteReader r(d);
     DWORD len = 0;
     // Note: skipping DWORD version at offset 0. It's supposed to be 2 or 3.
-    for (size_t off = 4; off + 4 < data.size(); off += len + (size_t)4) {
+    for (size_t off = 4; off + 4 < d.size(); off += len + (size_t)4) {
         // Note: at some point we seem to get off-sync i.e. I'm seeing
         // many entries with type == 0 and len == 0. Seems harmless.
         len = r.WordLE(off + 2);
@@ -190,22 +187,22 @@ bool ChmFile::ParseSystemData() {
         switch (type) {
             case 0:
                 if (!tocPath) {
-                    tocPath.Set(GetCharZ(data, off + 4));
+                    tocPath.Set(GetCharZ(d, off + 4));
                 }
                 break;
             case 1:
                 if (!indexPath) {
-                    indexPath.Set(GetCharZ(data, off + 4));
+                    indexPath.Set(GetCharZ(d, off + 4));
                 }
                 break;
             case 2:
                 if (!homePath) {
-                    homePath.Set(GetCharZ(data, off + 4));
+                    homePath.Set(GetCharZ(d, off + 4));
                 }
                 break;
             case 3:
                 if (!title) {
-                    title.Set(GetCharZ(data, off + 4));
+                    title.Set(GetCharZ(d, off + 4));
                 }
                 break;
             case 4:
@@ -218,7 +215,7 @@ bool ChmFile::ParseSystemData() {
                 break;
             case 9:
                 if (!creator) {
-                    creator.Set(GetCharZ(data, off + 4));
+                    creator.Set(GetCharZ(d, off + 4));
                 }
                 break;
             case 16:
@@ -231,44 +228,53 @@ bool ChmFile::ParseSystemData() {
 }
 
 char* ChmFile::ResolveTopicID(unsigned int id) const {
-    AutoFree ivbData = GetData("/#IVB");
+    ByteSlice ivbData = GetData("/#IVB");
+    AutoFree f = ivbData.Get();
     size_t ivbLen = ivbData.size();
-    ByteReader br(ivbData.AsView());
+    ByteReader br(ivbData);
     if ((ivbLen % 8) != 4 || ivbLen - 4 != br.DWordLE(0)) {
         return nullptr;
     }
 
     for (size_t off = 4; off < ivbLen; off += 8) {
         if (br.DWordLE(off) == id) {
-            AutoFree stringsData(GetData("/#STRINGS"));
-            return GetCharZ(stringsData.AsSpan(), br.DWordLE(off + 4));
+            ByteSlice stringsData = GetData("/#STRINGS");
+            char* res = GetCharZ(stringsData, br.DWordLE(off + 4));
+            stringsData.Free();
+            return res;
         }
     }
     return nullptr;
 }
 
-void ChmFile::FixPathCodepage(AutoFree& path, uint& fileCP) {
+void ChmFile::FixPathCodepage(AutoFreeStr& path, uint& fileCP) {
     if (!path || HasData(path)) {
         return;
     }
 
-    AutoFree utf8Path(ToUtf8((u8*)path.Get()));
+    TempStr utf8Path = SmartToUtf8Temp(path.Get());
     if (HasData(utf8Path)) {
-        path.Set(utf8Path.Release());
+        path.SetCopy(utf8Path);
         fileCP = codepage;
-    } else if (fileCP != codepage) {
-        utf8Path.Set(ToUtf8((u8*)path.Get(), fileCP));
-        if (HasData(utf8Path)) {
-            path.Set(utf8Path.Release());
-            codepage = fileCP;
-        }
+        return;
+    }
+
+    if (fileCP == codepage) {
+        return;
+    }
+
+    utf8Path = SmartToUtf8Temp(path.Get(), fileCP);
+    if (HasData(utf8Path)) {
+        path.SetCopy(utf8Path);
+        codepage = fileCP;
+        return;
     }
 }
 
-bool ChmFile::Load(const char* fileNameA) {
-    WCHAR* fileName = ToWstrTemp(fileNameA);
-    data = file::ReadFile(fileName);
-    chmHandle = chm_open((const char*)data.Get(), data.size());
+bool ChmFile::Load(const char* path) {
+    ByteSlice fileContent = file::ReadFile(path);
+    data = fileContent.Get();
+    chmHandle = chm_open(fileContent, fileContent.size());
     if (!chmHandle) {
         return false;
     }
@@ -279,8 +285,8 @@ bool ChmFile::Load(const char* fileNameA) {
     }
 
     uint fileCodepage = codepage;
-    char header[24] = {0};
-    int n = file::ReadN(fileName, header, sizeof(header));
+    char header[24]{};
+    int n = file::ReadN(path, header, sizeof(header));
     if (n < (int)sizeof(header)) {
         ByteReader r(header, sizeof(header));
         DWORD lcid = r.DWordLE(20);
@@ -312,19 +318,20 @@ bool ChmFile::Load(const char* fileNameA) {
     return true;
 }
 
-WCHAR* ChmFile::GetProperty(DocumentProperty prop) const {
-    AutoFreeWstr result;
-    if (DocumentProperty::Title == prop && title) {
-        result.Set(ToStr(title));
-    } else if (DocumentProperty::CreatorApp == prop && creator) {
-        result.Set(ToStr(creator));
+TempStr ChmFile::GetPropertyTemp(const char* name) const {
+    char* result = nullptr;
+    if (str::Eq(kPropTitle, name) && title.CStr()) {
+        result = SmartToUtf8Temp(title.CStr());
+    } else if (str::Eq(kPropCreatorApp, name) && creator.CStr()) {
+        result = SmartToUtf8Temp(creator.CStr());
     }
     // TODO: shouldn't it be up to the front-end to normalize whitespace?
-    if (result) {
-        // TODO: original code called str::RemoveCharsInPlace(result, "\n\r\t")
-        str::NormalizeWSInPlace(result);
+    if (!result) {
+        return nullptr;
     }
-    return result.StealData();
+    // TODO: original code called str::RemoveCharsInPlace(result, "\n\r\t")
+    str::NormalizeWSInPlace(result);
+    return result;
 }
 
 const char* ChmFile::GetHomePath() const {
@@ -335,15 +342,13 @@ static int ChmEnumerateEntry(struct chmFile* chmHandle, struct chmUnitInfo* info
     if (str::IsEmpty(info->path)) {
         return CHM_ENUMERATOR_CONTINUE;
     }
-    Vec<char*>* paths = (Vec<char*>*)data;
-    paths->Append(str::Dup(info->path));
+    StrVec* paths = (StrVec*)data;
+    paths->Append(info->path);
     return CHM_ENUMERATOR_CONTINUE;
 }
 
-Vec<char*>* ChmFile::GetAllPaths() const {
-    Vec<char*>* paths = new Vec<char*>();
-    chm_enumerate(chmHandle, CHM_ENUMERATE_FILES | CHM_ENUMERATE_NORMAL, ChmEnumerateEntry, paths);
-    return paths;
+void ChmFile::GetAllPaths(StrVec* v) const {
+    chm_enumerate(chmHandle, CHM_ENUMERATE_FILES | CHM_ENUMERATE_NORMAL, ChmEnumerateEntry, v);
 }
 
 /* The html looks like:
@@ -358,18 +363,19 @@ Vec<char*>* ChmFile::GetAllPaths() const {
   ... siblings ...
 */
 static bool VisitChmTocItem(EbookTocVisitor* visitor, HtmlElement* el, uint cp, int level) {
-    CrashIf(el->tag != Tag_Object || level > 1 && (!el->up || el->up->tag != Tag_Li));
+    ReportIf(el->tag != Tag_Object || level > 1 && (!el->up || el->up->tag != Tag_Li));
 
-    AutoFreeWstr name, local;
+    AutoFreeWStr name, local;
     for (el = el->GetChildByTag(Tag_Param); el; el = el->next) {
         if (Tag_Param != el->tag) {
             continue;
         }
-        AutoFreeWstr attrName(el->GetAttribute("name"));
-        AutoFreeWstr attrVal(el->GetAttribute("value"));
+        AutoFreeWStr attrName(el->GetAttribute("name"));
+        AutoFreeWStr attrVal(el->GetAttribute("value"));
         if (attrName && attrVal && cp != CP_CHM_DEFAULT) {
-            AutoFree bytes(strconv::WstrToCodePageV(CP_CHM_DEFAULT, attrVal));
-            attrVal.Set(strconv::StrToWstr(bytes.Get(), cp));
+            AutoFreeStr bytes = strconv::WStrToCodePage(CP_CHM_DEFAULT, attrVal);
+            WCHAR* ws = strconv::StrCPToWStr(bytes.Get(), cp);
+            attrVal.Set(ws);
         }
         if (!attrName || !attrVal) {
             /* ignore incomplete/unneeded <param> */;
@@ -387,7 +393,9 @@ static bool VisitChmTocItem(EbookTocVisitor* visitor, HtmlElement* el, uint cp, 
         return false;
     }
 
-    visitor->Visit(name, local, level);
+    char* nameA = ToUtf8Temp(name);
+    char* localA = ToUtf8Temp(local);
+    visitor->Visit(nameA, localA, level);
     return true;
 }
 
@@ -405,56 +413,63 @@ static bool VisitChmTocItem(EbookTocVisitor* visitor, HtmlElement* el, uint cp, 
   ... siblings ...
 */
 static bool VisitChmIndexItem(EbookTocVisitor* visitor, HtmlElement* el, uint cp, int level) {
-    CrashIf(el->tag != Tag_Object || level > 1 && (!el->up || el->up->tag != Tag_Li));
+    ReportIf(el->tag != Tag_Object || level > 1 && (!el->up || el->up->tag != Tag_Li));
 
-    WStrVec references;
-    AutoFreeWstr keyword, name;
+    StrVec references;
+    char* keyword = nullptr;
+    char* name = nullptr;
     for (el = el->GetChildByTag(Tag_Param); el; el = el->next) {
         if (Tag_Param != el->tag) {
             continue;
         }
-        AutoFreeWstr attrName(el->GetAttribute("name"));
-        AutoFreeWstr attrVal(el->GetAttribute("value"));
+        TempStr attrName = el->GetAttributeTemp("name");
+        TempStr attrVal = el->GetAttributeTemp("value");
         if (attrName && attrVal && cp != CP_CHM_DEFAULT) {
-            AutoFree bytes(strconv::WstrToCodePageV(CP_CHM_DEFAULT, attrVal));
-            attrVal.Set(strconv::StrToWstr(bytes.Get(), cp));
+            // TODO: convert attrVal to CP_CHM_DEFAULT
+            // AutoFreeStr bytes = strconv::WStrToCodePage(CP_CHM_DEFAULT, attrVal);
+            // attrVal.Set(strconv::StrCPToWStr(bytes.Get(), cp));
         }
         if (!attrName || !attrVal) {
             /* ignore incomplete/unneeded <param> */;
-        } else if (str::EqI(attrName, L"Keyword")) {
-            keyword.Set(attrVal.StealData());
-        } else if (str::EqI(attrName, L"Name")) {
-            name.Set(attrVal.StealData());
+        } else if (str::EqI(attrName, "Keyword")) {
+            keyword = attrVal;
+        } else if (str::EqI(attrName, "Name")) {
+            name = attrVal;
             // some CHM documents seem to use a lonely Name instead of Keyword
             if (!keyword) {
-                keyword.SetCopy(name);
+                keyword = name;
             }
-        } else if (str::EqI(attrName, L"Local") && name) {
+        } else if (str::EqI(attrName, "Local") && name) {
             // remove the ITS protocol and any filename references from the URLs
-            if (str::Find(attrVal, L"::/")) {
-                attrVal.SetCopy(str::Find(attrVal, L"::/") + 3);
+            auto s = str::Find(attrVal, "::/");
+            if (s) {
+                attrVal = (char*)s + 3;
             }
-            references.Append(name.StealData());
-            references.Append(attrVal.StealData());
+            references.Append(name);
+            references.Append(attrVal);
         }
     }
     if (!keyword) {
         return false;
     }
 
-    if (references.size() == 2) {
-        visitor->Visit(keyword, references.at(1), level);
+    if (references.Size() == 2) {
+        char* refs = references[1];
+        visitor->Visit(keyword, refs, level);
         return true;
     }
     visitor->Visit(keyword, nullptr, level);
-    for (size_t i = 0; i < references.size(); i += 2) {
-        visitor->Visit(references.at(i), references.at(i + 1), level + 1);
+    int n = references.Size();
+    for (int i = 0; i < n; i += 2) {
+        char* ref1 = references[i];
+        char* ref2 = references[i + 1];
+        visitor->Visit(ref1, ref2, level + 1);
     }
     return true;
 }
 
 static void WalkChmTocOrIndex(EbookTocVisitor* visitor, HtmlElement* list, uint cp, bool isIndex, int level = 1) {
-    CrashIf(Tag_Ul != list->tag);
+    ReportIf(Tag_Ul != list->tag);
 
     // some broken ToCs wrap every <li> into its own <ul>
     for (; list && Tag_Ul == list->tag; list = list->next) {
@@ -494,7 +509,7 @@ static bool WalkBrokenChmTocOrIndex(EbookTocVisitor* visitor, HtmlParser& p, uin
 
     HtmlElement* el = p.FindElementByName("body");
     while ((el = p.FindElementByName("object", el)) != nullptr) {
-        AutoFreeWstr type(el->GetAttribute("type"));
+        AutoFreeWStr type(el->GetAttribute("type"));
         if (!str::EqI(type, L"text/sitemap")) {
             continue;
         }
@@ -512,11 +527,12 @@ bool ChmFile::ParseTocOrIndex(EbookTocVisitor* visitor, const char* path, bool i
     if (!path) {
         return false;
     }
-    AutoFree htmlData = GetData(path);
+    ByteSlice htmlData = GetData(path);
     if (htmlData.empty()) {
         return false;
     }
-    const char* html = htmlData.Get();
+    const char* html = htmlData;
+    AutoFreeStr htmlFree = htmlData.Get();
 
     HtmlParser p;
     uint cp = codepage;
@@ -528,7 +544,7 @@ bool ChmFile::ParseTocOrIndex(EbookTocVisitor* visitor, const char* path, bool i
     // enforce the default codepage, so that pre-encoded text and
     // entities are in the same codepage and VisitChmTocItem yields
     // consistent results
-    HtmlElement* el = p.Parse(str::ToSpan(html), CP_CHM_DEFAULT);
+    HtmlElement* el = p.Parse(ToByteSlice(html), CP_CHM_DEFAULT);
     if (!el) {
         return false;
     }
@@ -562,10 +578,9 @@ bool ChmFile::IsSupportedFileType(Kind kind) {
     return kind == kindFileChm;
 }
 
-ChmFile* ChmFile::CreateFromFile(const WCHAR* path) {
+ChmFile* ChmFile::CreateFromFile(const char* path) {
     ChmFile* chmFile = new ChmFile();
-    char* pathA = ToUtf8Temp(path);
-    if (!chmFile || !chmFile->Load(pathA)) {
+    if (!chmFile || !chmFile->Load(path)) {
         delete chmFile;
         return nullptr;
     }

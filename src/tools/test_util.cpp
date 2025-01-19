@@ -10,9 +10,6 @@ extern void BaseUtils_UnitTests();
 // in src/UnitTests.cpp
 extern void SumatraPDF_UnitTests();
 
-// in src/mui/SvgPath_ut.cpp
-extern void SvgPath_UnitTests();
-
 extern void BaseUtilTest();
 extern void ByteOrderTests();
 extern void CryptoUtilTest();
@@ -31,12 +28,9 @@ extern void TrivialHtmlParser_UnitTests();
 extern void VecTest();
 extern void WinUtilTest();
 extern void StrFormatTest();
+extern void StrVecTest();
 
-void _submitDebugReportIfFunc(__unused bool cond, __unused const char* condStr) {
-    // no-op implementation to satisfy SubmitBugReport()
-}
-
-int main(__unused int argc, __unused char** argv) {
+int main(int, char**) {
     printf("Running unit tests\n");
 
     InitDynCalls();
@@ -52,13 +46,13 @@ int main(__unused int argc, __unused char** argv) {
     SettingsUtilTest();
     SimpleLogTest();
     SquareTreeTest();
+    StrFormatTest();
     StrTest();
+    StrVecTest();
     TrivialHtmlParser_UnitTests();
     VecTest();
     WinUtilTest();
     SumatraPDF_UnitTests();
-    SvgPath_UnitTests();
-    StrFormatTest();
 
     int res = utassert_print_results();
     DestroyTempAllocator();

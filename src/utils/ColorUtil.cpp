@@ -1,9 +1,13 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 #include "utils/BaseUtil.h"
 #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
+
+bool IsSpecialColor(COLORREF col) {
+    return col == kColorUnset || col == kColorNoChange;
+}
 
 COLORREF MkColor(u8 r, u8 g, u8 b, u8 a) {
     COLORREF r2 = r;
@@ -70,19 +74,14 @@ Gdiplus::Color GdiRgbaFromCOLORREF(COLORREF c) {
     return Gdiplus::Color(c);
 }
 
-// TODO: replace usage with GdiRgbFromCOLORREF
-Gdiplus::Color FromColor(COLORREF c) {
-    return Gdiplus::Color(c);
-}
-
-char* SerializeColor(COLORREF c) {
+TempStr SerializeColorTemp(COLORREF c) {
     u8 r, g, b, a;
     UnpackColor(c, r, g, b, a);
     char* s = nullptr;
     if (a > 0) {
-        s = str::Format("#%02x%02x%02x%02x", a, r, g, b);
+        s = str::FormatTemp("#%02x%02x%02x%02x", a, r, g, b);
     } else {
-        s = str::Format("#%02x%02x%02x", r, g, b);
+        s = str::FormatTemp("#%02x%02x%02x", r, g, b);
     }
     return s;
 }
@@ -96,7 +95,7 @@ void ParseColor(ParsedColor& parsed, const char* txt) {
     if (!txt) {
         return;
     }
-    char* s = str::DupTemp(txt).Get();
+    char* s = str::DupTemp(txt);
     str::TrimWSInPlace(s, str::TrimOpt::Both);
     if (str::StartsWith(s, "0x")) {
         s += 2;
@@ -124,7 +123,7 @@ void ParseColor(ParsedColor& parsed, const char* txt) {
 
 /* Parse 's' as hex color and return the result in 'destColor' */
 bool ParseColor(COLORREF* destColor, const char* s) {
-    CrashIf(!destColor);
+    ReportIf(!destColor);
     ParsedColor p;
     ParseColor(p, s);
     *destColor = p.col;
@@ -203,12 +202,22 @@ COLORREF AdjustLightness2(COLORREF c, float units) {
     return AdjustLightness(c, 1.0f + units / lightness);
 }
 
-// cf. http://en.wikipedia.org/wiki/HSV_color_space#Lightness
+// http://en.wikipedia.org/wiki/HSV_color_space#Lightness
 float GetLightness(COLORREF c) {
-    u8 R, G, B;
-    UnpackColor(c, R, G, B);
-    BYTE M = std::max(std::max(R, G), B), m = std::min(std::min(R, G), B);
-    return (M + m) / 2.0f;
+    u8 r, g, b;
+    UnpackColor(c, r, g, b);
+    u8 m1 = std::max(std::max(r, g), b);
+    u8 m2 = std::min(std::min(r, g), b);
+    return (float)(m1 + m2) / 2.0f;
+}
+
+// return true for light color, false for dark
+// https://stackoverflow.com/questions/52879235/determine-color-lightness-via-rgb
+bool IsLightColor(COLORREF c) {
+    u8 r, g, b;
+    UnpackColor(c, r, g, b);
+    float y = 0.2126f * float(r) + 0.7152f * float(g) + 0.0722f * float(b);
+    return y > 127.5f; // mid 256
 }
 
 u8 GetRed(COLORREF rgb) {

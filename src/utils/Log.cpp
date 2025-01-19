@@ -1,12 +1,13 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 #include "utils/BaseUtil.h"
 #include "utils/ThreadUtil.h"
 #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
+#include "utils/FileUtil.h"
 
-constexpr const WCHAR* kPipeName = L"\\\\.\\pipe\\SumatraPDFLogger";
+constexpr const WCHAR* kPipeName = L"\\\\.\\pipe\\LOCAL\\ArsLexis-Logger";
 
 const char* gLogAppName = "SumatraPDF";
 
@@ -26,12 +27,16 @@ bool gLogToDebugger = false;
 bool gReducedLogging = false;
 // when main thread exists other threads might still
 // try to log. when true, this stops logging
-bool gStopLogging = false;
+bool gDestroyedLogging = false;
+
+// if true, doesn't log if the same text has already been logged
+// reduces logging but also can be confusing i.e. log lines are not showing up
+bool gSkipDuplicateLines = false;
 
 bool gLogToPipe = true;
 HANDLE hLogPipe = INVALID_HANDLE_VALUE;
 
-static char* logFilePath;
+char* gLogFilePath = nullptr;
 
 // 1 MB - 128 to stay under 1 MB even after appending (an estimate)
 constexpr int kMaxLogBuf = 1024 * 1024 - 128;
@@ -56,17 +61,20 @@ static const char* getWinError(DWORD errCode) {
 }
 #endif
 
-static void logToPipe(std::string_view sv) {
+static void logToPipe(const char* s, size_t n = 0) {
     if (!gLogToPipe) {
         return;
     }
-    if (sv.empty()) {
+    if (!s || (*s == 0)) {
         return;
     }
+    if (n == 0) {
+        n = str::Len(s);
+    }
 
-    DWORD cbWritten{0};
-    BOOL ok{false};
-    bool didConnect{false};
+    DWORD cbWritten = 0;
+    BOOL ok = false;
+    bool didConnect = false;
     if (!IsValidHandle(hLogPipe)) {
         // try open pipe for logging
         hLogPipe = CreateFileW(kPipeName, GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
@@ -88,20 +96,19 @@ static void logToPipe(std::string_view sv) {
 
     if (didConnect) {
         // logview accepts logging from anyone, so announce ourselves
-        char* initialMsg = str::Format("app: %s\n", gLogAppName);
+        TempStr initialMsg = str::FormatTemp("app: %s\n", gLogAppName);
         WriteFile(hLogPipe, initialMsg, (DWORD)str::Len(initialMsg), &cbWritten, nullptr);
-        str::Free(initialMsg);
     }
 
-    DWORD cb = (DWORD)sv.size();
+    DWORD cb = (DWORD)n;
     // TODO: what happens when we write more than the server can read?
     // should I loop if cbWritten < cb?
-    ok = WriteFile(hLogPipe, sv.data(), cb, &cbWritten, nullptr);
+    ok = WriteFile(hLogPipe, s, cb, &cbWritten, nullptr);
     if (!ok) {
 #if 0
         DWORD err = GetLastError();
         OutputDebugStringA("logPipe: WriteFile() failed with error: ");
-        char buf[256]{0};
+        char buf[256]{};
         snprintf(buf, sizeof(buf) - 1, "%d %s\n", (int)err, getWinError(err));
         OutputDebugStringA(buf);
 #endif
@@ -110,12 +117,16 @@ static void logToPipe(std::string_view sv) {
     }
 }
 
-void log(std::string_view s) {
-    // in reduced logging mode, we do want to log to at least the debugger
-    if (gLogToDebugger || IsDebuggerPresent() || gReducedLogging) {
-        OutputDebugStringA(s.data());
+void log(const char* s, bool always) {
+    bool skipLog = !always && gSkipDuplicateLines && gLogBuf && gLogBuf->Contains(s);
+
+    if (!skipLog) {
+        // in reduced logging mode, we do want to log to at least the debugger
+        if (gLogToDebugger || IsDebuggerPresent() || gReducedLogging) {
+            OutputDebugStringA(s);
+        }
     }
-    if (gStopLogging) {
+    if (gDestroyedLogging) {
         return;
     }
     if (gReducedLogging) {
@@ -129,87 +140,109 @@ void log(std::string_view s) {
     }
     gLogMutex.Lock();
 
-    gAllowAllocFailure++;
+    InterlockedIncrement(&gAllowAllocFailure);
     defer {
-        gAllowAllocFailure--;
+        InterlockedDecrement(&gAllowAllocFailure);
     };
 
     if (!gLogBuf) {
         gLogAllocator = new HeapAllocator();
         gLogBuf = new str::Str(32 * 1024, gLogAllocator);
     } else {
-        if (gLogBuf->isize() > kMaxLogBuf) {
+        if (gLogBuf->Size() > kMaxLogBuf) {
             // TODO: use gLogBuf->Clear(), which doesn't free the allocated space
             gLogBuf->Reset();
         }
     }
 
-    gLogBuf->Append(s.data(), s.size());
-    if (gLogToConsole) {
-        fwrite(s.data(), 1, s.size(), stdout);
+    size_t n = str::Len(s);
+
+    // when skipping, we skip buf (crash reports) and console
+    // but write to file and logview
+    if (!skipLog) {
+        gLogBuf->Append(s, n);
+    }
+
+    if (!skipLog && gLogToConsole) {
+        fwrite(s, 1, n, stdout);
         fflush(stdout);
     }
 
-    if (logFilePath) {
-        auto f = fopen(logFilePath, "a");
+    if (gLogFilePath) {
+        auto f = fopen(gLogFilePath, "a");
         if (f != nullptr) {
-            fwrite(s.data(), 1, s.size(), f);
+            fwrite(s, 1, n, f);
             fflush(f);
             fclose(f);
         }
     }
-    logToPipe(s);
+    logToPipe(s, n);
     gLogMutex.Unlock();
 }
-
-void log(const char* s) {
-    auto sv = std::string_view(s);
-    log(sv);
+void loga(const char* s) {
+    if (gDestroyedLogging) {
+        return;
+    }
+    log(s, true);
 }
 
 void logf(const char* fmt, ...) {
-    if (gReducedLogging || gStopLogging) {
+    if (gReducedLogging || gDestroyedLogging) {
         return;
     }
 
     va_list args;
     va_start(args, fmt);
-    AutoFree s = str::FmtV(fmt, args);
-    log(s.AsView());
+    AutoFreeStr s = str::FmtV(fmt, args);
+    log(s.Get(), false);
     va_end(args);
 }
 
-void StartLogToFile(const char* path) {
-    logFilePath = str::Dup(path);
-    remove(path);
-}
-
-void log(const WCHAR* s) {
-    if (gStopLogging || !s) {
-        return;
-    }
-    auto tmp = ToUtf8Temp(s);
-    log(tmp.AsView());
-}
-
-void logf(const WCHAR* fmt, ...) {
-    if (gReducedLogging || gStopLogging) {
+void logfa(const char* fmt, ...) {
+    if (gDestroyedLogging) {
         return;
     }
 
     va_list args;
     va_start(args, fmt);
-    AutoFreeWstr s = str::FmtV(fmt, args);
-    log(s);
+    char* s = str::FmtV(fmt, args);
+    log(s, true);
+    str::Free(s);
     va_end(args);
+}
+
+void StartLogToFile(const char* path, bool removeIfExists) {
+    ReportIf(gLogFilePath);
+    gLogFilePath = str::Dup(path);
+    if (removeIfExists) {
+        remove(path);
+    }
+}
+
+bool WriteCurrentLogToFile(const char* path) {
+    ByteSlice slice = gLogBuf->AsByteSlice();
+    if (slice.empty()) {
+        return false;
+    }
+    bool ok = dir::CreateForFile(path);
+    if (!ok) {
+        logf("WriteCurrentLogToFile: dir::CreateForFile('%s') failed\n", path);
+        return false;
+    }
+    ok = file::WriteFile(path, slice);
+    if (!ok) {
+        logf("WriteCurrentLogToFile: file::WriteFile('%s') failed\n", path);
+    }
+    return ok;
 }
 
 void DestroyLogging() {
-    gStopLogging = true;
+    gDestroyedLogging = true;
     gLogMutex.Lock();
     delete gLogBuf;
     gLogBuf = nullptr;
     delete gLogAllocator;
     gLogAllocator = nullptr;
     gLogMutex.Unlock();
+    str::FreePtr(&gLogFilePath);
 }

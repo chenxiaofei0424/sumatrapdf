@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 39 Mesa Street, Suite 108A, San Francisco,
+// CA 94129, USA, for further information.
+
 #include "mupdf/fitz.h"
 
 #include <limits.h>
@@ -259,7 +281,7 @@ void fz_pcl_preset(fz_context *ctx, fz_pcl_options *opts, const char *preset)
 	else if (!strcmp(preset, "oce9050"))
 		copy_opts(opts, &fz_pcl_options_oce9050);
 	else
-		fz_throw(ctx, FZ_ERROR_GENERIC, "Unknown preset '%s'", preset);
+		fz_throw(ctx, FZ_ERROR_ARGUMENT, "Unknown preset '%s'", preset);
 }
 
 fz_pcl_options *
@@ -282,7 +304,7 @@ fz_parse_pcl_options(fz_context *ctx, fz_pcl_options *opts, const char *args)
 		case 1: opts->features = (opts->features & ~PCL_ANY_SPACING) | PCL3_SPACING; break;
 		case 2: opts->features = (opts->features & ~PCL_ANY_SPACING) | PCL4_SPACING; break;
 		case 3: opts->features = (opts->features & ~PCL_ANY_SPACING) | PCL5_SPACING; break;
-		default: fz_throw(ctx, FZ_ERROR_GENERIC, "Unsupported PCL spacing %d (0-3 only)", atoi(val));
+		default: fz_throw(ctx, FZ_ERROR_ARGUMENT, "Unsupported PCL spacing %d (0-3 only)", atoi(val));
 		}
 	}
 	if (fz_has_option(ctx, args, "mode2", &val))
@@ -292,7 +314,7 @@ fz_parse_pcl_options(fz_context *ctx, fz_pcl_options *opts, const char *args)
 		else if (fz_option_eq(val, "yes"))
 			opts->features |= PCL_MODE_2_COMPRESSION;
 		else
-			fz_throw(ctx, FZ_ERROR_GENERIC, "Expected 'yes' or 'no' for mode2 value");
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "Expected 'yes' or 'no' for mode2 value");
 	}
 	if (fz_has_option(ctx, args, "mode3", &val))
 	{
@@ -301,7 +323,7 @@ fz_parse_pcl_options(fz_context *ctx, fz_pcl_options *opts, const char *args)
 		else if (fz_option_eq(val, "yes"))
 			opts->features |= PCL_MODE_3_COMPRESSION;
 		else
-			fz_throw(ctx, FZ_ERROR_GENERIC, "Expected 'yes' or 'no' for mode3 value");
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "Expected 'yes' or 'no' for mode3 value");
 	}
 	if (fz_has_option(ctx, args, "eog_reset", &val))
 	{
@@ -310,7 +332,7 @@ fz_parse_pcl_options(fz_context *ctx, fz_pcl_options *opts, const char *args)
 		else if (fz_option_eq(val, "yes"))
 			opts->features |= PCL_END_GRAPHICS_DOES_RESET;
 		else
-			fz_throw(ctx, FZ_ERROR_GENERIC, "Expected 'yes' or 'no' for eog_reset value");
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "Expected 'yes' or 'no' for eog_reset value");
 	}
 	if (fz_has_option(ctx, args, "has_duplex", &val))
 	{
@@ -319,7 +341,7 @@ fz_parse_pcl_options(fz_context *ctx, fz_pcl_options *opts, const char *args)
 		else if (fz_option_eq(val, "yes"))
 			opts->features |= PCL_HAS_DUPLEX;
 		else
-			fz_throw(ctx, FZ_ERROR_GENERIC, "Expected 'yes' or 'no' for has_duplex value");
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "Expected 'yes' or 'no' for has_duplex value");
 	}
 	if (fz_has_option(ctx, args, "has_papersize", &val))
 	{
@@ -328,7 +350,7 @@ fz_parse_pcl_options(fz_context *ctx, fz_pcl_options *opts, const char *args)
 		else if (fz_option_eq(val, "yes"))
 			opts->features |= PCL_CAN_SET_PAPER_SIZE;
 		else
-			fz_throw(ctx, FZ_ERROR_GENERIC, "Expected 'yes' or 'no' for has_papersize value");
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "Expected 'yes' or 'no' for has_papersize value");
 	}
 	if (fz_has_option(ctx, args, "has_copies", &val))
 	{
@@ -337,7 +359,7 @@ fz_parse_pcl_options(fz_context *ctx, fz_pcl_options *opts, const char *args)
 		else if (fz_option_eq(val, "yes"))
 			opts->features |= PCL_CAN_PRINT_COPIES;
 		else
-			fz_throw(ctx, FZ_ERROR_GENERIC, "Expected 'yes' or 'no' for has_papersize value");
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "Expected 'yes' or 'no' for has_papersize value");
 	}
 	if (fz_has_option(ctx, args, "is_ljet4pjl", &val))
 	{
@@ -346,7 +368,7 @@ fz_parse_pcl_options(fz_context *ctx, fz_pcl_options *opts, const char *args)
 		else if (fz_option_eq(val, "yes"))
 			opts->features |= HACK__IS_A_LJET4PJL;
 		else
-			fz_throw(ctx, FZ_ERROR_GENERIC, "Expected 'yes' or 'no' for is_ljet4pjl value");
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "Expected 'yes' or 'no' for is_ljet4pjl value");
 	}
 	if (fz_has_option(ctx, args, "is_oce9050", &val))
 	{
@@ -355,7 +377,7 @@ fz_parse_pcl_options(fz_context *ctx, fz_pcl_options *opts, const char *args)
 		else if (fz_option_eq(val, "yes"))
 			opts->features |= HACK__IS_A_OCE9050;
 		else
-			fz_throw(ctx, FZ_ERROR_GENERIC, "Expected 'yes' or 'no' for is_oce9050 value");
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "Expected 'yes' or 'no' for is_oce9050 value");
 	}
 
 	return opts;
@@ -717,6 +739,7 @@ fz_write_pixmap_as_pcl(fz_context *ctx, fz_output *out, const fz_pixmap *pixmap,
 	{
 		fz_write_header(ctx, writer, pixmap->w, pixmap->h, pixmap->n, pixmap->alpha, pixmap->xres, pixmap->yres, 0, pixmap->colorspace, pixmap->seps);
 		fz_write_band(ctx, writer, pixmap->stride, pixmap->h, pixmap->samples);
+		fz_close_band_writer(ctx, writer);
 	}
 	fz_always(ctx)
 		fz_drop_band_writer(ctx, writer);
@@ -747,11 +770,11 @@ color_pcl_write_header(fz_context *ctx, fz_band_writer *writer_, fz_colorspace *
 	int yres = writer->super.yres;
 
 	if (a != 0)
-		fz_throw(ctx, FZ_ERROR_GENERIC, "color PCL cannot write alpha channel");
+		fz_throw(ctx, FZ_ERROR_ARGUMENT, "color PCL cannot write alpha channel");
 	if (s != 0)
-		fz_throw(ctx, FZ_ERROR_GENERIC, "color PCL cannot write spot colors");
+		fz_throw(ctx, FZ_ERROR_ARGUMENT, "color PCL cannot write spot colors");
 	if (n != 3)
-		fz_throw(ctx, FZ_ERROR_GENERIC, "color PCL must be RGB");
+		fz_throw(ctx, FZ_ERROR_ARGUMENT, "color PCL must be RGB");
 
 	writer->linebuf = Memento_label(fz_malloc(ctx, w * 3 * 2), "color_pcl_linebuf");
 
@@ -1118,6 +1141,7 @@ fz_write_bitmap_as_pcl(fz_context *ctx, fz_output *out, const fz_bitmap *bitmap,
 	{
 		fz_write_header(ctx, writer, bitmap->w, bitmap->h, 1, 0, bitmap->xres, bitmap->yres, 0, NULL, NULL);
 		fz_write_band(ctx, writer, bitmap->stride, bitmap->h, bitmap->samples);
+		fz_close_band_writer(ctx, writer);
 	}
 	fz_always(ctx)
 		fz_drop_band_writer(ctx, writer);
@@ -1150,11 +1174,11 @@ mono_pcl_write_header(fz_context *ctx, fz_band_writer *writer_, fz_colorspace *c
 	int max_mode_3_size;
 
 	if (writer->super.alpha != 0)
-		fz_throw(ctx, FZ_ERROR_GENERIC, "mono PCL cannot write alpha channel");
+		fz_throw(ctx, FZ_ERROR_ARGUMENT, "mono PCL cannot write alpha channel");
 	if (writer->super.s != 0)
-		fz_throw(ctx, FZ_ERROR_GENERIC, "mono PCL cannot write spot colors");
+		fz_throw(ctx, FZ_ERROR_ARGUMENT, "mono PCL cannot write spot colors");
 	if (writer->super.n != 1)
-		fz_throw(ctx, FZ_ERROR_GENERIC, "mono PCL must be grayscale");
+		fz_throw(ctx, FZ_ERROR_ARGUMENT, "mono PCL must be grayscale");
 
 	line_size = (w + 7)/8;
 	max_mode_2_size = line_size + (line_size/127) + 1;

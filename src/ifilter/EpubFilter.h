@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
 enum EPUB_FILTER_STATE { STATE_EPUB_START, STATE_EPUB_AUTHOR, STATE_EPUB_TITLE, STATE_EPUB_DATE, STATE_EPUB_CONTENT, STATE_EPUB_END };
@@ -19,7 +19,7 @@ public:
 
     // IPersist
     IFACEMETHODIMP GetClassID(CLSID *pClassID) {
-        return CLSIDFromString(SZ_EPUB_FILTER_HANDLER, pClassID);
+        return CLSIDFromString(kEpubFilterHandler, pClassID);
     }
 
 private:

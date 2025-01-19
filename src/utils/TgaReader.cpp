@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 #include "BaseUtil.h"
@@ -181,7 +181,7 @@ static ImageAlpha GetAlphaType(const u8* data, size_t len) {
 }
 
 // checks whether this could be data for a TGA image
-bool HasSignature(ByteSlice d) {
+bool HasSignature(const ByteSlice& d) {
     size_t len = d.size();
     const u8* data = (const u8*)d.data();
     if (HasVersion2Footer(data, len)) {
@@ -211,7 +211,7 @@ static void SetImageProperty(Gdiplus::Bitmap* bmp, PROPID id, const char* asciiV
     item.value = (void*)asciiValue;
     item.length = (ULONG)(str::Len(asciiValue) + 1);
     Gdiplus::Status ok = bmp->SetPropertyItem(&item);
-    CrashIf(ok != Gdiplus::Ok);
+    ReportIf(ok != Gdiplus::Ok);
 }
 
 static bool IsFieldSet(const char* field, size_t len, bool isBinary = false) {
@@ -289,7 +289,7 @@ static inline void CopyPixel(u8* dst, const u8* src, int n) {
             *(u32*)dst = *(u32*)src;
             break;
         default:
-            CrashIf(true);
+            ReportIf(true);
     }
 }
 
@@ -328,7 +328,7 @@ static void ReadPixel(ReadState& s, u8* dst) {
     }
 }
 
-Gdiplus::Bitmap* ImageFromData(ByteSlice d) {
+Gdiplus::Bitmap* ImageFromData(const ByteSlice& d) {
     size_t len = d.size();
     const u8* data = (const u8*)d.data();
 
@@ -380,7 +380,6 @@ Gdiplus::Bitmap* ImageFromData(ByteSlice d) {
         return nullptr;
     }
     CopyMetadata(data, len, &bmp);
-    // hack to avoid the use of ::new (because there won't be a corresponding ::delete)
     return bmp.Clone(0, 0, w, h, format);
 }
 
@@ -398,12 +397,12 @@ ByteSlice SerializeBitmap(HBITMAP hbmp) {
     WORD w = (WORD)bmpInfo.bmWidth;
     WORD h = (WORD)bmpInfo.bmHeight;
     int stride = ((w * 3 + 3) / 4) * 4;
-    AutoFree bmpData((char*)malloc(stride * h));
+    char* bmpData = AllocArrayTemp<char>(stride * h);
     if (!bmpData) {
         return {};
     }
 
-    BITMAPINFO bmi = {0};
+    BITMAPINFO bmi{};
     bmi.bmiHeader.biSize = sizeof(bmi.bmiHeader);
     bmi.bmiHeader.biWidth = w;
     bmi.bmiHeader.biHeight = h;
@@ -418,7 +417,7 @@ ByteSlice SerializeBitmap(HBITMAP hbmp) {
     }
     ReleaseDC(nullptr, hDC);
 
-    TgaHeader headerLE = {0};
+    TgaHeader headerLE{};
     headerLE.imageType = Type_Truecolor_RLE;
     headerLE.width = convLE(w);
     headerLE.height = convLE(h);

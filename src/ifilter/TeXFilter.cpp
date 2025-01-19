@@ -1,24 +1,25 @@
-﻿/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+﻿/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
 #include "utils/WinUtil.h"
 
 #include "FilterBase.h"
-#include "PdfFilterClsid.h"
+#include "RegistrySearchFilter.h"
 #include "TeXFilter.h"
 
 HRESULT TeXFilter::OnInit() {
     if (!m_pData) {
         // load content of LaTeX file into m_pData
         HRESULT res;
-        AutoFree data = GetDataFromStream(m_pStream, &res);
+        ByteSlice data = GetDataFromStream(m_pStream, &res);
         if (data.empty()) {
             return res;
         }
 
-        m_pData = strconv::StrToWstr(data.data, CP_ACP);
+        m_pData = strconv::StrCPToWStr(data, CP_ACP);
         m_pBuffer = AllocArray<WCHAR>(data.size() + 1);
+        data.Free();
 
         if (!m_pData || !m_pBuffer) {
             CleanUp();

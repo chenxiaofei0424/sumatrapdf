@@ -4,11 +4,13 @@
    This software is provided AS-IS with no warranty, either express or
    implied.
 
-   This software is distributed under license and may not be copied, modified
-   or distributed except as expressly authorized under the terms of that
-   license. Refer to licensing information at http://www.artifex.com
-   or contact Artifex Software, Inc.,  1305 Grant Avenue - Suite 200,
-   Novato, CA 94945, U.S.A., +1(415)492-9861, for further information.
+   This software is distributed under license and may not be copied,
+   modified or distributed except as expressly authorized under the terms
+   of the license contained in the file COPYING in this distribution.
+
+   Refer to licensing information at http://www.artifex.com or contact
+   Artifex Software, Inc.,  39 Mesa Street, Suite 108A, San Francisco,
+   CA 94129, USA, for further information.
 */
 
 /* Inspired by Fortify by Simon P Bullen. */
@@ -1448,7 +1450,10 @@ int Memento_listBlocksNested(void)
         size_t end = (b->rawsize < MEMENTO_PTRSEARCH ? b->rawsize : MEMENTO_PTRSEARCH);
         size_t z;
         VALGRIND_MAKE_MEM_DEFINED(p, end);
-        end -= sizeof(void *)-1;
+        if (end > sizeof(void *)-1)
+            end -= sizeof(void *)-1;
+        else
+            end = 0;
         for (z = MEMENTO_SEARCH_SKIP; z < end; z += sizeof(void *)) {
             void *q = *(void **)(&p[z]);
             void **r;

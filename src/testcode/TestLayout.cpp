@@ -2,15 +2,8 @@
 #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
 
-#include "wingui/WinGui.h"
+#if 0
 #include "wingui/Layout.h"
-#include "wingui/Window.h"
-#include "wingui/ButtonCtrl.h"
-#include "wingui/CheckboxCtrl.h"
-#include "wingui/EditCtrl.h"
-#include "wingui/DropDownCtrl.h"
-#include "wingui/StaticCtrl.h"
-#include "wingui/ProgressCtrl.h"
 
 #include "test-app.h"
 
@@ -40,16 +33,16 @@ static void doMainLayout() {
     InvalidateRect(g_hwnd, nullptr, false);
 }
 
-static void onCheckboxChanged(CheckState state) {
+static void onCheckboxChanged(Checkbox::State state) {
     const char* name = "";
     switch (state) {
-        case CheckState::Unchecked:
+        case Checkbox::State::Unchecked:
             name = "unchecked";
             break;
-        case CheckState::Checked:
+        case Checkbox::State::Checked:
             name = "checked";
             break;
-        case CheckState::Indeterminate:
+        case Checkbox::State::Indeterminate:
             name = "indeterminate";
             break;
         default:
@@ -61,10 +54,10 @@ static void onCheckboxChanged(CheckState state) {
 }
 
 static CheckboxCtrl* CreateCheckbox(HWND parent, std::string_view s) {
-    auto b = new CheckboxCtrl(parent);
+    auto b = new CheckboxCtrl();
     b->SetText(s);
-    b->onCheckStateChanged = onCheckboxChanged;
-    b->Create();
+    b->onStateChanged = onCheckboxChanged;
+    b->Create(parent);
     return b;
 }
 
@@ -74,11 +67,11 @@ static void onTextChanged(EditTextChangedEvent* args) {
 }
 
 static EditCtrl* CreateEdit(HWND parent, std::string_view s) {
-    auto w = new EditCtrl(parent);
+    auto w = new EditCtrl();
     w->SetText(s);
     w->SetCueText("a cue text");
     w->onTextChanged = onTextChanged;
-    w->Create();
+    w->Create(parent);
     return w;
 }
 
@@ -91,21 +84,21 @@ static void onDropDownSelected(DropDownSelectionChangedEvent* args) {
 }
 
 static DropDownCtrl* CreatedDropDown(HWND parent) {
-    auto w = new DropDownCtrl(parent);
+    auto w = new DropDownCtrl();
     for (size_t i = 0; i < dimof(ddItems); i++) {
         auto s = ddItems[i];
         std::string_view sv(s);
         w->items.Append(sv);
     }
     w->onSelectionChanged = onDropDownSelected;
-    w->Create();
+    w->Create(parent);
     return w;
 }
 
 static StaticCtrl* CreateStatic(HWND parent, std::string_view s) {
-    auto w = new StaticCtrl(parent);
+    auto w = new StaticCtrl();
     w->SetText(s);
-    w->Create();
+    w->Create(parent);
     return w;
 }
 
@@ -114,12 +107,12 @@ static int currProgress = 0;
 static ProgressCtrl* gProgress = nullptr;
 
 static ProgressCtrl* CreateProgress(HWND parent, int maxRange) {
-    auto w = new ProgressCtrl(parent, maxRange);
-    w->Create();
+    auto w = new ProgressCtrl(maxRange);
+    w->Create(parent);
     return w;
 }
 
-static void ToggleMainAxis() {
+static void ToggleMainAxis(void*) {
     u8 n = (u8)vboxLayout->alignMain + 1;
     if (n > (u8)MainAxisAlign::Homogeneous) {
         n = 0;
@@ -129,7 +122,7 @@ static void ToggleMainAxis() {
     doMainLayout();
 }
 
-static void ToggleCrossAxis() {
+static void ToggleCrossAxis(void*) {
     u8 n = (u8)vboxLayout->alignCross + 1;
     if (n > (u8)CrossAxisAlign::CrossEnd) {
         n = 0;
@@ -139,7 +132,7 @@ static void ToggleCrossAxis() {
     doMainLayout();
 }
 
-static void AdvanceProgress() {
+static void AdvanceProgress(void*) {
     currProgress++;
     if (currProgress > maxProgress) {
         currProgress = 0;
@@ -154,12 +147,12 @@ static void CreateMainLayout(HWND hwnd) {
     vbox->alignMain = MainAxisAlign::MainEnd;
     vbox->alignCross = CrossAxisAlign::Stretch;
     {
-        auto b = CreateButton(hwnd, "toggle main axis", ToggleMainAxis);
+        auto b = CreateButton(hwnd, "toggle main axis", mkFunc0<void>(ToggleMainAxis, nullptr));
         vbox->AddChild(b);
     }
 
     {
-        auto b = CreateButton(hwnd, "advance progress", AdvanceProgress);
+        auto b = CreateButton(hwnd, "advance progress", mkFunc0<void>(AdvanceProgress, nullptr));
         vbox->AddChild(b);
     }
 
@@ -169,7 +162,7 @@ static void CreateMainLayout(HWND hwnd) {
     }
 
     {
-        auto b = CreateButton(hwnd, "toggle cross axis", ToggleCrossAxis);
+        auto b = CreateButton(hwnd, "toggle cross axis", mkFunc0<void>(ToggleCrossAxis, nullptr));
         vbox->AddChild(b);
     }
 
@@ -213,7 +206,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     //DbgLogMsg("tl", hwnd, msg, wp, lp);
 
     LRESULT res = 0;
-    if (HandleRegisteredMessages(hwnd, msg, wp, lp, res)) {
+    res = TryReflectMessages(hwnd, msg, wp, lp);
+    if (res) {
         return res;
     }
 
@@ -298,15 +292,20 @@ static BOOL CreateMainWindow(HINSTANCE hInstance, int nCmdShow) {
     UpdateWindow(hwnd);
     return TRUE;
 }
+#endif
 
 int TestLayout(HINSTANCE hInstance, int nCmdShow) {
+#if 0
     RegisterWinClass(hInstance);
 
     if (!CreateMainWindow(hInstance, nCmdShow)) {
-        CrashAlwaysIf(true);
+        ReportIf(true);
         return FALSE;
     }
     HACCEL accelTable = LoadAccelerators(hInst, MAKEINTRESOURCE(IDC_TESTWIN));
     auto res = RunMessageLoop(accelTable, g_hwnd);
     return res;
+#else
+    return 0;
+#endif
 }

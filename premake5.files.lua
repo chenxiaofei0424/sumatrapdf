@@ -8,27 +8,18 @@ function files_in_dir(dir, files_in_dir)
   files(paths)
 end
 
-function logview_files()
-  files_in_dir("src/utils", {
-    "BaseUtil.*",
-    "TempAllocator.*",
-    "StrUtil.*",
-    "StrconvUtil.*",
-  })
-  files {
-    "src/tools/logview.cpp",
-  }
-end
-
 function preview_test_files()
   files_in_dir("src/utils", {
     "BaseUtil.*",
     "TempAllocator.*",
+    "StrFormat.*",
     "StrUtil.*",
+    "StrVec.*",
     "StrconvUtil.*",
   })
   files {
     "src/tools/preview_test.cpp",
+    "src/CrashHandlerNoOp.cpp",
   }
 end
 
@@ -39,13 +30,16 @@ function makelzsa_files()
     "ByteWriter.*",
     "ColorUtil.*",
     "CmdLineArgsIter.*",
+    "DirIter.*",
     "Dpi.*",
     "FileUtil.*",
     "GeomUtil.*",
     "LzmaSimpleArchive.*",
     "StrconvUtil.*",
-    "StringViewUtil.*",
+    "StrFormat.*",
     "StrUtil.*",
+    "StrVec.*",
+    "StrQueue.*",
     "TempAllocator.*",
     "Log.*",
     "WinDynCalls.*",
@@ -75,12 +69,9 @@ function zlib_ng_files()
     "crc32_comb.c",
     "deflate.c",
     "deflate_fast.c",
-    "deflate_huff.c",
     "deflate_medium.c",
     "deflate_quick.c",
-    "deflate_rle.c",
     "deflate_slow.c",
-    "deflate_stored.c",
     "functable.c",
     "gzlib.c",
     "gzread.c",
@@ -90,8 +81,6 @@ function zlib_ng_files()
     "inflate.c",
     "inftrees.c",
     "insert_string.c",
-    "insert_string_roll.c",
-    "slide_hash.c",
     "trees.c",
     "uncompr.c",
     "zutil.c",
@@ -250,6 +239,119 @@ function jbig2dec_files()
   })
 end
 
+function libheif_files() 
+  files_in_dir("ext/libheif/libheif", {
+    "bitstream.*",
+    "box.*",
+    "error.*",
+    "heif.*",
+    "heif_avif.*",
+    "heif_colorconversion.*",
+    "heif_context.*",
+    "heif_decoder_dav1d.*",
+    "heif_file.*",
+    "heif_hevc.*",
+    "heif_image.*",
+    "heif_plugin.*",
+    "heif_plugin_registry.*",
+    "nclx.*",
+  })
+
+end
+
+function dav1d_x68_files()
+  files_in_dir("ext/dav1d/src/x86", {
+    "cpu.c",
+    "msac_init.c",
+    "refmvs_init.c",
+  })
+
+  files_in_dir("ext/dav1d/src/x86", {
+    "cpuid.asm",
+    "msac.asm",
+    "refmvs.asm",
+    "cdef_avx2.asm",
+    "itx_avx2.asm",
+    "looprestoration_avx2.asm",
+    "cdef_sse.asm",
+    "itx_sse.asm",
+    "cdef_avx512.asm",
+    "filmgrain_avx512.asm",
+    "ipred_avx512.asm",
+    "itx_avx512.asm",
+    "loopfilter_avx512.asm",
+    "looprestoration_avx512.asm",
+    "mc_avx512.asm",
+    "filmgrain_avx2.asm",
+    "ipred_avx2.asm",
+    "loopfilter_avx2.asm",
+    "mc_avx2.asm",
+    "filmgrain_sse.asm",
+    "ipred_sse.asm",
+    "loopfilter_sse.asm",
+    "looprestoration_sse.asm",
+    "mc_sse.asm",
+    "cdef16_avx512.asm",
+    "filmgrain16_avx512.asm",
+    "ipred16_avx512.asm",
+    "looprestoration16_avx512.asm",
+    "mc16_avx512.asm",
+    "cdef16_avx2.asm",
+    "filmgrain16_avx2.asm",
+    "ipred16_avx2.asm",
+    "itx16_avx2.asm",
+    "loopfilter16_avx2.asm",
+    "looprestoration16_avx2.asm",
+    "mc16_avx2.asm",
+    "cdef16_sse.asm",
+    "filmgrain16_sse.asm",
+    "ipred16_sse.asm",
+    "itx16_sse.asm",
+    "loopfilter16_sse.asm",
+    "looprestoration16_sse.asm",
+    "mc16_sse.asm",
+  })
+end
+
+function dav1d_files()
+  files_in_dir("ext/dav1d/src", {
+    "lib.c",
+    "thread_task.c",
+    "cdf.c",
+    "cpu.c",
+    "data.c",
+    "decode.c",
+    "dequant_tables.c",
+    "getbits.c",
+    "intra_edge.c",
+    "itx_1d.c",
+    "lf_mask.c",
+    "log.c",
+    "mem.c",
+    "msac.c",
+    "obu.c",
+    "picture.c",
+    "qm.c",
+    "ref.c",
+    "refmvs.c",
+    "scan.c",
+    "tables.c",
+    "warpmv.c",
+    "wedge.c",
+    "win32/thread.c",
+  })
+
+  files_in_dir("ext/dav1d/src", {
+    "sumatra_bitdepth_8.c",
+    "sumatra_bitdepth_8_2.c",
+    "sumatra_bitdepth_16.c",
+    "sumatra_bitdepth_16_2.c",
+  })
+
+  files("ext/dav1d/include/common/*.h")
+  files("ext/dav1d/include/dav1d/*.h")
+end
+
 function openjpeg_files()
   files_in_dir( "ext/openjpeg/src/lib/openjp2", {
     "bio.c",
@@ -258,6 +360,7 @@ function openjpeg_files()
     "dwt.c",
     "event.c",
     "function_list.c",
+    "ht_dec.c",
     "image.c",
     "invert.c",
     "j2k.c",
@@ -286,20 +389,28 @@ function extract_files()
   files_in_dir("ext/extract/src", {
     "alloc.*",
     "astring.*",
+    "boxer.*",
     "buffer.*",
-    "docx_template.*",
+    "document.*",
     "docx.*",
+    "docx_template.*",
     "extract.*",
+    "html.*",
     "join.*",
+    "json.*",
     "mem.*",
     "memento.*",
     "odt_template.*",
     "odt.*",
     "outf.*",
+    "rect.*",
     "sys.*",
     "text.*",
     "xml.*",
     "zip.*",
+  })
+  files_in_dir("ext/extract/include", {
+    "*.h",
   })
 end
 
@@ -310,27 +421,37 @@ function libwebp_files()
     "alpha_processing.c",
     "alpha_processing_sse2.c",
     "alpha_processing_sse41.c",
+    "alpha_processing_neon.c",
     "cost.c",
     "cpu.c",
     "dec.c",
     "dec_clip_tables.c",
     "dec_sse2.c",
     "dec_sse41.c",
+    "dec_neon.c",
     "filters.c",
     "filters_sse2.c",
+    "filters_neon.c",
     "lossless.c",
     "lossless_sse2.c",
+    "lossless_sse41.c",
+    "lossless_neon.c",
     "rescaler.c",
     "rescaler_sse2.c",
+    "rescaler_neon.c",
     "ssim.c",
     "ssim_sse2.c",
     "upsampling.c",
     "upsampling_sse2.c",
     "upsampling_sse41.c",
+    "upsampling_neon.c",
     "yuv.c",
     "yuv_sse2.c",
     "yuv_sse41.c",
+    "yuv_neon.c",
   })
+
+  files("ext/libwebp/src/sharpyuv/*.c")
 
   files("ext/libwebp/src/utils/*.c")
 end
@@ -343,12 +464,15 @@ function libjpeg_turbo_files()
     "jerror.c", "jfdctflt.c", "jfdctint.c", "jidctflt.c", "jidctfst.c",
     "jidctint.c", "jquant1.c", "jquant2.c", "jutils.c", "jmemmgr.c", "jmemnobs.c",
     "jaricom.c", "jdarith.c", "jfdctfst.c", "jdphuff.c", "jidctred.c",
+    "jcapimin.c", "jcapistd.c", "jcarith.c", "jccoefct.c", "jccolor.c",
+    "jcdctmgr.c", "jchuff.c", "jcinit.c", "jcmainct.c", "jcmarker.c",
+    "jcmaster.c", "jcparam.c", "jcprepct.c", "jcsample.c", "jcphuff.c"
   })
 
-  --to build non-assembly version, use this:
-  --files {"ext/libjpeg-turbo/jsimd_none.c"}
+  filter {'platforms:arm64'}
+    files {"ext/libjpeg-turbo/jsimd_none.c"}
 
-  filter {'platforms:x32 or x32_asan'}
+  filter {'platforms:x32'}
     files_in_dir("ext/libjpeg-turbo/simd", {
       "jsimdcpu.asm", "jccolmmx.asm", "jcgrammx.asm", "jdcolmmx.asm",
     	"jcsammmx.asm", "jdsammmx.asm", "jdmermmx.asm", "jcqntmmx.asm",
@@ -372,7 +496,6 @@ function libjpeg_turbo_files()
     files {"ext/libjpeg-turbo/simd/jsimd_x86_64.c"}
 
   filter {}
-
 end
 
 function lcms2_files()
@@ -388,6 +511,7 @@ function harfbuzz_files()
     "hb-aat-map.cc",
     "hb-blob.cc",
     "hb-buffer.cc",
+    "hb-buffer-verify.cc",
     "hb-buffer-serialize.cc",
     "hb-common.cc",
     "hb-face.cc",
@@ -408,18 +532,18 @@ function harfbuzz_files()
     "hb-ot-metrics.cc",
     "hb-ot-name.cc",
     "hb-ot-shape.cc",
-    "hb-ot-shape-complex-arabic.cc",
-    "hb-ot-shape-complex-default.cc",
-    "hb-ot-shape-complex-hangul.cc",
-    "hb-ot-shape-complex-hebrew.cc",
-    "hb-ot-shape-complex-indic-table.cc",
-    "hb-ot-shape-complex-indic.cc",
-    "hb-ot-shape-complex-khmer.cc",
-    "hb-ot-shape-complex-myanmar.cc",
-    "hb-ot-shape-complex-thai.cc",
-    "hb-ot-shape-complex-use-table.cc",
-    "hb-ot-shape-complex-use.cc",
-    "hb-ot-shape-complex-vowel-constraints.cc",
+    "hb-ot-shaper-arabic.cc",
+    "hb-ot-shaper-default.cc",
+    "hb-ot-shaper-hangul.cc",
+    "hb-ot-shaper-hebrew.cc",
+    "hb-ot-shaper-indic-table.cc",
+    "hb-ot-shaper-indic.cc",
+    "hb-ot-shaper-khmer.cc",
+    "hb-ot-shaper-myanmar.cc",
+    "hb-ot-shaper-syllabic.cc",
+    "hb-ot-shaper-thai.cc",
+    "hb-ot-shaper-use.cc",
+    "hb-ot-shaper-vowel-constraints.cc",
     "hb-ot-shape-fallback.cc",
     "hb-ot-shape-normalize.cc",
     "hb-ot-tag.cc",
@@ -446,6 +570,7 @@ function freetype_files()
     "ftbbox.c",
     "ftbitmap.c",
     "ftdebug.c",
+    "ftfstype.c",
     "ftgasp.c",
     "ftglyph.c",
     "ftinit.c",
@@ -476,62 +601,74 @@ files {
 }
 
 function sumatrapdf_files()
+  files_in_dir(".", {
+    ".gitignore",
+    "*.yml",
+    ".github/*.yml",
+    ".github/workflows/*.yml",
+    "do/*.go",
+    "docs/*.txt",
+    "docs/*.html",
+    "docs/md/*.md",
+    "docs/www/*.css",
+    "premake5.lua",
+    "premake5.obsolete.lua",
+    "premake5.files.lua",
+  })
   files_in_dir("src", {
     "Accelerators.*",
     "Actions.*",
     "AppColors.*",
-    "AppPrefs.*",
+    "AppSettings.*",
     "AppTools.*",
-    "AppUtil.*",
     "Caption.*",
     "Canvas.*",
     "CanvasAboutUI.*",
     "ChmModel.*",
     "Commands.*",
-    "Controller.h",
+    "CommandPalette.*",
     "CrashHandler.*",
     "DisplayModel.*",
     "DisplayMode.*",
-    "Doc.*",
-    "EbookController.*",
-    "EbookControls.*",
+    "DocController.h",
+    "DocProperties.*",
     "EditAnnotations.*",
+    "EngineDump.cpp",
     "ExternalViewers.*",
     "Favorites.*",
     "FileHistory.*",
     "FileThumbnails.*",
     "Flags.*",
+    "FzImgReader.*",
     "GlobalPrefs.*",
-    "Installer.h",
-    "Installer.cpp",
-    "InstUninstCommon.cpp",
-    "Uninstaller.cpp",
-    "MemLeakDetect.*",
+    "HomePage.*",
+    "Installer.*",
+    "InstallerCommon.cpp",
+    "MainWindow.*",
     "Menu.*",
-    "MuiEbookPageDef.*",
     "Notifications.*",
-    "PagesLayoutDef.*",
     "PdfSync.*",
     "Print.*",
     "ProgressUpdateUI.*",
     "RenderCache.*",
+    "RegistryInstaller.*",
+    "RegistryPreview.*",
+    "RegistrySearchFilter.*",
     "resource.h",
-    "SaveAsPdf.*",
-    "Scratch.*",
     "SearchAndDDE.*",
     "Selection.*",
+    "Settings.h",
     "SettingsStructs.*",
+    "SimpleBrowserWindow.*",
     "SumatraPDF.cpp",
     "SumatraPDF.h",
     "SumatraPDF.rc",
     "SumatraStartup.cpp",
     "SumatraConfig.cpp",
-    "SumatraAbout.*",
     "SumatraDialogs.*",
     "SumatraProperties.*",
     "StressTesting.*",
     "SvgIcons.*",
-    "TabInfo.*",
     "TableOfContents.*",
     "Tabs.*",
     "Tester.*",
@@ -540,18 +677,21 @@ function sumatrapdf_files()
     "Theme.*",
     "Toolbar.*",
     "Translations.*",
-    "TranslationsInfo.cpp",
+    "TranslationLangs.cpp",
     "UpdateCheck.*",
     "Version.h",
-    "WindowInfo.*",
+    "VirtWnd.*",
+    "Uninstaller.cpp",
+    "WindowTab.*",
 
     "ext/versions.txt",
-    "docs/*.txt",
+    "scratch.txt",
   })
-  filter {"configurations:Debug"}
+  filter {"configurations:Debug or DebugFull"}
     files_in_dir("src", {
       "Tests.cpp",
-      "regress/Regress.*",  
+      "regress/Regress.*",
+      "Scratch.*",
     })
     files_in_dir("src/testcode", {
       "test-app.h",
@@ -581,6 +721,7 @@ end
 
 function utils_files()
   files_in_dir("src/utils", {
+    "AvifReader.*",
     "ApiHook.*",
     "Archive.*",
     "BaseUtil.*",
@@ -603,7 +744,6 @@ function utils_files()
     "FileWatcher.*",
     "FzImgReader.*",
     "GdiPlusUtil.*",
-    "HtmlWindow.*",
     "HtmlParserLookup.*",
     "HtmlPullParser.*",
     "HtmlPrettyPrint.*",
@@ -611,19 +751,16 @@ function utils_files()
     "JsonParser.*",
     "Log.*",
     "LzmaSimpleArchive.*",
-    "MinHook.*",
-    "PEB.h",
     "RegistryPaths.*",
     "Scoped.h",
     "ScopedWin.h",
-    "SerializeTxt.*",
     "SettingsUtil.*",
     "SquareTreeParser.*",
     "StrconvUtil.*",
     "StrFormat.*",
-    "StringViewUtil.*",
-    "StrSlice.*",
     "StrUtil.*",
+    "StrVec.*",
+    "StrQueue.*",
     "TempAllocator.*",
     "ThreadUtil.*",
     "TgaReader.*",
@@ -635,10 +772,16 @@ function utils_files()
     "WebpReader.*",
     "WinDynCalls.*",
     "WinUtil.*",
-    "windrawlib.*",
     "ZipUtil.*",
   })
+  filter {"configurations:Debug or DebugFull"}
+    files_in_dir("src/utils", {
+      "windrawlib.*",
+    })
+  filter {}
+end
 
+function wingui_files()
   files_in_dir("src/wingui", {
     "*.h",
     "*.cpp",
@@ -647,20 +790,7 @@ end
 
 function mui_files()
   files_in_dir("src/mui", {
-    "MuiBase.*",
     "Mui.*",
-    "MuiCss.*",
-    "MuiLayout.*",
-    "MuiPainter.*",
-    "MuiControl.*",
-    "MuiButton.*",
-    "MuiScrollBar.*",
-    "MuiEventMgr.*",
-    "MuiHwndWrapper.*",
-    "MuiGrid.*",
-    "SvgPath.*",
-    "MuiDefs.*",
-    "MuiFromText.*",
     "TextRender.*",
   })
 end
@@ -668,17 +798,17 @@ end
 function engines_files()
   files_in_dir("src", {
     "Annotation.*",
+    "ChmFile.*",
+    "DocProperties.*",
     "EngineBase.*",
     "EngineCreate.*",
     "EngineDjVu.*",
     "EngineEbook.*",
     "EngineImages.*",
-    "EngineMulti.*",
     "EngineMupdf.*",
     "EngineMupdfImpl.*",
     "EnginePs.*",
     "EngineAll.h",
-    "ChmFile.*",
     "EbookDoc.*",
     "EbookFormatter.*",
     "HtmlFormatter.*",
@@ -696,24 +826,7 @@ function chm_files()
 end
 
 function mupdf_files()
-  --[[ files {
-    "mupdf/font_base14.asm",
-  }
-  --]]
-
   files { "ext/mupdf_load_system_font.c" }
-
-  filter {"platforms:x64 or x64_asan"}
-    files {
-      "mupdf/fonts_64.asm",
-    }
-  filter {}
-
-  filter {"platforms:x32 or x32_asan"}
-    files {
-      "mupdf/fonts_32.asm",
-    }
-  filter {}
 
   files_in_dir("mupdf/source/cbz", {
     "mucbz.c",
@@ -739,6 +852,7 @@ function mupdf_files()
     "crypt-arc4.c",
     "crypt-md5.c",
     "crypt-sha2.c",
+    "deskew.c",
     "device.c",
     "directory.c",
     "document.c",
@@ -757,6 +871,7 @@ function mupdf_files()
     "draw-unpack.c",
     "encode-basic.c",
     "encode-fax.c",
+    "encode-jpx.c",
     "encodings.c",
     "error.c",
     "filter-basic.c",
@@ -775,9 +890,11 @@ function mupdf_files()
     "getopt.c",
     "glyph.c",
     "glyphbox.c",
+    "gz-doc.c",
     "halftone.c",
     "harfbuzz.c",
     "hash.c",
+    "heap.c",
     "image.c",
     "jmemcust.c",
     "link.c",
@@ -791,6 +908,7 @@ function mupdf_files()
     "load-jxr-win.c",
     "load-png.c",
     "load-pnm.c",
+    "load-psd.c",
     "load-tiff.c",
     "log.c",
     "memento.c",
@@ -800,6 +918,7 @@ function mupdf_files()
     "output.c",
     "output-cbz.c",
     "output-docx.c",
+    "output-jpeg.c",
     "output-pcl.c",
     "output-pclm.c",
     "output-pdfocr.c",
@@ -814,8 +933,10 @@ function mupdf_files()
     "pool.c",
     "printf.c",
     "random.c",
+    "skew.c",
     "separation.c",
     "shade.c",
+    "stext-boxer.c",
     "stext-device.c",
     "stext-output.c",
     "stext-search.c",
@@ -827,16 +948,22 @@ function mupdf_files()
     "svg-device.c",
     "test-device.c",
     "text.c",
+    "text-decoder.c",
     "time.c",
     "trace-device.c",
     "track-usage.c",
     "transition.c",
     "tree.c",
     "ucdn.c",
+    "uncfb.c",
+    "unlibarchive.c",
+    "subset-cff.c",
+    "subset-ttf.c",
     "untar.c",
     "unzip.c",
     "util.c",
     "writer.c",
+    "xml-write.c",
     "xml.c",
     "zip.c",
   })
@@ -844,15 +971,23 @@ function mupdf_files()
   files_in_dir("mupdf/source/html", {
     "css-apply.c",
     "css-parse.c",
+    "css-properties.h",
     "epub-doc.c",
     "html-doc.c",
     "html-font.c",
+    "html-imp.h",
     "html-layout.c",
     "html-outline.c",
     "html-parse.c",
+    "mobi.c",
+    "office.c",
+    "story-writer.c",
+    "txt.c",
+    "xml-dom.c",
   })
 
   files_in_dir("mupdf/source/pdf", {
+    "pdf-af.c",
     "pdf-annot.c",
     "pdf-appearance.c",
     "pdf-clean.c",
@@ -870,6 +1005,7 @@ function mupdf_files()
     "pdf-function.c",
     "pdf-graft.c",
     "pdf-image.c",
+    "pdf-image-rewriter.c",
     "pdf-interpret.c",
     "pdf-js.c",
     "pdf-layer.c",
@@ -886,6 +1022,7 @@ function mupdf_files()
     "pdf-page.c",
     "pdf-parse.c",
     "pdf-pattern.c",
+    "pdf-recolor.c",
     "pdf-repair.c",
     "pdf-resources.c",
     "pdf-run.c",
@@ -893,12 +1030,14 @@ function mupdf_files()
     "pdf-signature.c",
     "pdf-store.c",
     "pdf-stream.c",
+    "pdf-subset.c",
     "pdf-type3.c",
     "pdf-unicode.c",
     "pdf-util.c",
     "pdf-write.c",
     "pdf-xobject.c",
     "pdf-xref.c",
+    "pdf-zugferd.c",
     "*.h",
   })
 
@@ -992,9 +1131,17 @@ function efi_files()
     "tools/efi/*.h",
     "tools/efi/*.cpp",
     "src/utils/BaseUtil*",
+    "CrashHandlerNoOp.cpp",
     "src/utils/BitManip.h",
     "src/utils/Dict*",
     "src/utils/StrUtil.*",
+  }
+end
+
+function sizer_files()
+  files {
+    "tools/sizer/*",
+    "src/CrashHandlerNoOp.cpp",
   }
 end
 
@@ -1020,8 +1167,9 @@ function test_util_files()
     "Log.*",
     "StrconvUtil.*",
     "StrFormat.*",
-    "StringViewUtil.*",
     "StrUtil.*",
+    "StrVec.*",
+    "StrQueue.*",
     "SquareTreeParser.*",
     "TrivialHtmlParser.*",
     "TempAllocator.*",
@@ -1032,27 +1180,24 @@ function test_util_files()
     "tests/*"
   })
   files_in_dir("src", {
-    --"AppTools.*",
     --"StressTesting.*",
-    "AppUtil.*",
-    "EngineBase.*",
+    --"AppTools.*",
+    "Commands.*",
+    "CrashHandlerNoOp.cpp",
     "DisplayMode.*",
     "Flags.*",
     "SumatraConfig.*",
     "SettingsStructs.*",
     "SumatraUnitTests.cpp",
-    "mui/SvgPath*",
     "tools/test_util.cpp"
   })
 end
 
-function engine_dump_files()
-  files_in_dir("src", {
-    "EngineDump.cpp",
-    "SumatraConfig.*",    
-    "mui/MiniMui.*",
-    "mui/TextRender.*"
-  })
+function plugin_test_files()
+    files {
+        "src/tools/plugin-test.cpp",
+        "src/CrashHandlerNoOp.cpp"
+    }
 end
 
 function pdf_preview_files()
@@ -1063,10 +1208,14 @@ function pdf_preview_files()
   })
 
   files_in_dir("src", {
-    "utils/LogDbg.*",
-    "mui/MiniMui.*",
+    "utils/Log.*",
+    "mui/Mui.*",
     "mui/TextRender.*",
-    "MUPDF_Exports.cpp",
+    "CrashHandlerNoOp.cpp",
+    "ChmFile.*",
+    "DocProperties.*",
+    "EbookDoc.*",
+    "EbookFormatter.*",
     "EngineBase.*",
     "EngineEbook.*",
     "EngineDjVu.*",
@@ -1074,37 +1223,40 @@ function pdf_preview_files()
     "EngineMupdf.*",
     "EngineMupdfImpl.*",
     "EngineAll.h",
-    "ChmFile.*",
-    "PalmDbReader.*",
-    "EbookDoc.*",
-    "EbookFormatter.*",
+    "FzImgReader.*",
     "HtmlFormatter.*",
+    "RegistryPreview.*",
     "MobiDoc.*",
+    "MUPDF_Exports.cpp",
+    "PalmDbReader.*",
     "PdfCreator.*",
     "SumatraConfig.*",
   })
 end
 
-function pdf_filter_files()
+function search_filter_files()
   files_in_dir("src/ifilter", {
     "PdfFilter.*",
-    "PdfFilterDll.cpp",
+    "SearchFilterDll.cpp",
     "CPdfFilter.*",
     "FilterBase.h",
   })
   files_in_dir("src", {
-    "utils/LogDbg.*",
+    "utils/Log.*",
     "MUPDF_Exports.cpp",
+    "CrashHandlerNoOp.cpp",
+    "DocProperties.*",
+    "EbookDoc.*",
     "EngineBase.*",
     "EngineAll.h",
     "EngineMupdf.*",
     "EngineMupdfImpl.*",
-    "PalmDbReader.*",
     "MobiDoc.*",
-    "EbookDoc.*",
+    "PalmDbReader.*",
+    "RegistrySearchFilter.*",
   })
 
-  filter {"configurations:Debug"}
+  filter {"configurations:Debug or DebugFull"}
     files_in_dir("src/ifilter", {
       "TeXFilter.*",
       "EpubFilter.*",
@@ -1117,65 +1269,6 @@ function pdf_filter_files()
   filter {}
 end
 
-
---[[
-function wdl_files()
-  files_in_dir("ext/WDL", {
-    "projectcontext.cpp",
-  })
-
-  files_in_dir("ext/WDL/tinyxml", {
-    "*.cpp",
-    "*.c",
-    "*.h",
-  })
-
-  files_in_dir("ext/WDL/lice", {
-    "lice.*",
-    "lice_arc.cpp",
-    "lice_bezier.h",
-    -- "lice_bmp.cpp",
-    "lice_colorspace.*",
-    "lice_combine.h",
-    "lice_extended.h",
-    -- "lice_gif.cpp",
-    -- "lice_gif_write.cpp",
-    -- "lice_gl_ctx.*",
-    -- "lice_glbitmap.*",
-    -- "lice_ico.cpp",
-    -- "lice_image.cpp",
-    "lice_import.h",
-    -- "lice_jpg.cpp",
-    -- "lice_jpg_write.cpp",
-    -- "lice_lcf.*",
-    "lice_line.cpp",
-    "lice_lvg.cpp",
-    "lice_palette.cpp",
-    -- "lice_pcx.cpp",
-    -- "lice_png.cpp",
-    -- "lice_png_write.cpp",
-    "lice_svg.cpp",
-    -- "lice_texgen.cpp",
-    "lice_text.*",
-    "lice_textnew.cpp",
-  })
-
-  files_in_dir("ext/WDL/wingui", {
-    "dlgitemborder.h",
-    "membitmap.h",
-    "riceditctrl.h",
-    "virtwnd.*",
-    "virtwnd-controls.h",
-    "virtwnd-iaccessible.cpp",
-    "virtwnd-iconbutton.cpp",
-    "virtwnd-listbox.cpp",
-    "virtwnd-skin.h",
-    "virtwnd-slider.cpp",
-    "wndsize.*",
-  })
-end
---]]
-
 function gumbo_files()
   files_in_dir("ext/gumbo-parser/src", {
     "*.c",
@@ -1183,5 +1276,11 @@ function gumbo_files()
   })
   files_in_dir("ext/gumbo-parser/include", {
     "*.h",
+  })
+end
+
+function bin2coff_files()
+  files_in_dir("tools", {
+    "bin2coff.c"
   })
 end

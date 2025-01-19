@@ -1,8 +1,8 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 #include "utils/BaseUtil.h"
-//#include "utils/ScopedWin.h"
+// #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
 #include "utils/FileUtil.h"
 #include "utils/ByteOrderDecoder.h"
@@ -15,7 +15,7 @@
 #define kPdbRecordHeaderLen 8
 
 // Takes ownership of d
-bool PdbReader::Parse(ByteSlice d) {
+bool PdbReader::Parse(const ByteSlice& d) {
     data = d.data();
     dataSize = d.size();
     return ParseHeader();
@@ -47,7 +47,7 @@ static bool DecodePdbHeader(ByteOrderDecoder& dec, PdbHeader* hdr) {
 }
 
 bool PdbReader::ParseHeader() {
-    CrashIf(recInfos.size() > 0);
+    ReportIf(recInfos.size() > 0);
 
     ByteOrderDecoder dec(data, dataSize, ByteOrderDecoder::BigEndian);
     bool ok = DecodePdbHeader(dec, &hdr);
@@ -105,7 +105,7 @@ size_t PdbReader::GetRecordCount() {
 // don't free, memory is owned by us
 ByteSlice PdbReader::GetRecord(size_t recNo) {
     size_t nRecs = recInfos.size();
-    CrashIf(recNo >= nRecs);
+    ReportIf(recNo >= nRecs);
     if (recNo >= nRecs) {
         return {};
     }
@@ -114,12 +114,12 @@ ByteSlice PdbReader::GetRecord(size_t recNo) {
     if (recNo != nRecs - 1) {
         nextOff = recInfos[recNo + 1].offset;
     }
-    CrashIf(off > nextOff);
+    ReportIf(off > nextOff);
     size_t size = nextOff - off;
     return {(u8*)data + off, size};
 }
 
-PdbReader* PdbReader::CreateFromData(ByteSlice d) {
+PdbReader* PdbReader::CreateFromData(const ByteSlice& d) {
     if (d.empty()) {
         return nullptr;
     }
@@ -132,21 +132,20 @@ PdbReader* PdbReader::CreateFromData(ByteSlice d) {
 }
 
 PdbReader* PdbReader::CreateFromFile(const char* path) {
-    auto d = file::ReadFile(path);
-    ByteSlice bytes = {(u8*)d.data(), d.size()};
-    return CreateFromData(bytes);
-}
-
-PdbReader* PdbReader::CreateFromFile(const WCHAR* filePath) {
-    ByteSlice d = file::ReadFile(filePath);
-    ByteSlice bytes = d;
-    return CreateFromData(bytes);
+    ByteSlice d = file::ReadFile(path);
+    return CreateFromData(d);
 }
 
 PdbReader* PdbReader::CreateFromStream(IStream* stream) {
     ByteSlice d = GetDataFromStream(stream, nullptr);
     return CreateFromData(d);
 }
+
+// values for typeCreator
+#define MOBI_TYPE_CREATOR "BOOKMOBI"
+#define PALMDOC_TYPE_CREATOR "TEXtREAd"
+#define TEALDOC_TYPE_CREATOR "TEXtTlDc"
+#define PLUCKER_TYPE_CREATOR "DataPlkr"
 
 PdbDocType GetPdbDocType(const char* typeCreator) {
     if (memeq(typeCreator, MOBI_TYPE_CREATOR, 8)) {

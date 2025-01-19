@@ -1,8 +1,10 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
-constexpr int RENDER_DELAY_FAILED = std::numeric_limits<int>::max() - 1;
-constexpr int RENDER_DELAY_UNDEFINED = std::numeric_limits<int>::max() - 2;
+// Note: they must be in this numeric order for ::Paint() logic to detect
+// page that couldn't be rendered
+constexpr int RENDER_DELAY_UNDEFINED = std::numeric_limits<int>::max() - 1;
+constexpr int RENDER_DELAY_FAILED = std::numeric_limits<int>::max() - 2;
 
 #define INVALID_TILE_RES ((USHORT)-1)
 
@@ -13,11 +15,7 @@ constexpr int RENDER_DELAY_UNDEFINED = std::numeric_limits<int>::max() - 2;
 // i.e. one big page can use as much memory as lots of small pages
 #define MAX_BITMAPS_CACHED 64
 
-class RenderingCallback {
-  public:
-    virtual void Callback(RenderedBitmap* bmp = nullptr) = 0;
-    virtual ~RenderingCallback() = default;
-};
+struct PageInfo;
 
 /* A page is split into tiles of at most TILE_MAX_W x TILE_MAX_H pixels.
    A given tile starts at (col / 2^res * page_width, row / 2^res * page_height). */
@@ -83,11 +81,10 @@ struct PageRenderRequest {
     DWORD timestamp = 0;
     // owned by the PageRenderRequest (use it before reusing the request)
     // on rendering success, the callback gets handed the RenderedBitmap
-    RenderingCallback* renderCb = nullptr;
+    const OnBitmapRendered* renderCb = nullptr;
 };
 
-class RenderCache {
-  public:
+struct RenderCache {
     BitmapCacheEntry* cache[MAX_BITMAPS_CACHED]{};
     int cacheCount = 0;
     // make sure to never ask for requestAccess in a cacheAccess
@@ -115,9 +112,10 @@ class RenderCache {
     ~RenderCache();
 
     void RequestRendering(DisplayModel* dm, int pageNo);
-    void Render(DisplayModel* dm, int pageNo, int rotation, float zoom, RectF pageRect, RenderingCallback& callback);
+    void Render(DisplayModel* dm, int pageNo, int rotation, float zoom, RectF pageRect,
+                const OnBitmapRendered& callback);
     void CancelRendering(DisplayModel* dm);
-    bool Exists(DisplayModel* dm, int pageNo, int rotation, float zoom = INVALID_ZOOM, TilePosition* tile = nullptr);
+    bool Exists(DisplayModel* dm, int pageNo, int rotation, float zoom = kInvalidZoom, TilePosition* tile = nullptr);
     void FreeForDisplayModel(DisplayModel* dm);
     void KeepForDisplayModel(DisplayModel* oldDm, DisplayModel* newDm);
     void Invalidate(DisplayModel* dm, int pageNo, RectF rect);
@@ -134,19 +132,19 @@ class RenderCache {
     USHORT GetMaxTileRes(DisplayModel* dm, int pageNo, int rotation);
     bool ReduceTileSize();
 
-    [[nodiscard]] bool IsRenderQueueFull() const {
+    bool IsRenderQueueFull() const {
         return requestCount == MAX_PAGE_REQUESTS;
     }
     int GetRenderDelay(DisplayModel* dm, int pageNo, TilePosition tile);
     void RequestRendering(DisplayModel* dm, int pageNo, TilePosition tile, bool clearQueueForPage = true);
     bool Render(DisplayModel* dm, int pageNo, int rotation, float zoom, TilePosition* tile = nullptr,
-                RectF* pageRect = nullptr, RenderingCallback* renderCb = nullptr);
-    void ClearQueueForDisplayModel(DisplayModel* dm, int pageNo = INVALID_PAGE_NO, TilePosition* tile = nullptr);
+                RectF* pageRect = nullptr, const OnBitmapRendered* renderCb = nullptr);
+    void ClearQueueForDisplayModel(DisplayModel* dm, int pageNo = kInvalidPageNo, TilePosition* tile = nullptr);
     void AbortCurrentRequest();
 
     static DWORD WINAPI RenderCacheThread(LPVOID data);
 
-    BitmapCacheEntry* Find(DisplayModel* dm, int pageNo, int rotation, float zoom = INVALID_ZOOM,
+    BitmapCacheEntry* Find(DisplayModel* dm, int pageNo, int rotation, float zoom = kInvalidZoom,
                            TilePosition* tile = nullptr);
     bool DropCacheEntry(BitmapCacheEntry* entry);
     void FreePage(DisplayModel* dm = nullptr, int pageNo = -1, TilePosition* tile = nullptr);

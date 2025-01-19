@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2022 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 39 Mesa Street, Suite 108A, San Francisco,
+// CA 94129, USA, for further information.
+
 Error.prototype.toString = function() {
 	if (this.stackTrace) return this.name + ': ' + this.message + this.stackTrace;
 	return this.name + ': ' + this.message;
@@ -454,9 +476,11 @@ function AFParseDateEx(string, fmt) {
 			if (order.indexOf('y') < order.indexOf('m')) {
 				year = nums[0];
 				month = nums[1];
+				date = 1;
 			} else {
 				year = nums[1];
 				month = nums[0];
+				date = 1;
 			}
 		}
 
@@ -666,7 +690,7 @@ function AFSpecial_KeystrokeEx(fmt) {
 			event.selStart = 0;
 			event.selEnd = event.value.length;
 		}
-	} else if (event.willCommit)
+	} else
 		app.alert('The value entered ('+event.value+') does not match the format of the field [ '+event.target.name+' ] should be '+fmt);
 }
 
@@ -697,6 +721,8 @@ function AFSpecial_Keystroke(index) {
 
 function AFSpecial_Format(index) {
 	var res;
+	if (!event.value)
+		return;
 	switch (index) {
 	case 0:
 		res = util.printx('99999', event.value);
@@ -716,7 +742,7 @@ function AFSpecial_Format(index) {
 }
 
 function AFNumber_Keystroke(nDec, sepStyle, negStyle, currStyle, strCurrency, bCurrencyPrepend) {
-	value = AFMergeChange(event);
+	var value = AFMergeChange(event);
 	if (sepStyle & 2) {
 		if (!value.match(/^[+-]?\d*[,.]?\d*$/))
 			event.rc = false;
@@ -819,6 +845,29 @@ function AFRange_Validate(lowerCheck, lowerLimit, upperCheck, upperLimit) {
 	}
 }
 
+// Create Doc.info proxy object.
+function mupdf_createInfoProxy(doc) {
+        doc.info = {
+                get Title() { return doc.title; },
+                set Title(value) { doc.title = value; },
+                get Author() { return doc.author; },
+                set Author(value) { doc.author = value; },
+                get Subject() { return doc.subject; },
+                set Subject(value) { doc.subject = value; },
+                get Keywords() { return doc.keywords; },
+                set Keywords(value) { doc.keywords = value; },
+                get Creator() { return doc.creator; },
+                set Creator(value) { doc.creator = value; },
+                get Producer() { return doc.producer; },
+                set Producer(value) { doc.producer = value; },
+                get CreationDate() { return doc.creationDate; },
+                set CreationDate(value) { doc.creationDate = value; },
+                get ModDate() { return doc.modDate; },
+                set ModDate(value) { doc.modDate = value; },
+        };
+}
+mupdf_createInfoProxy(global);
+
 /* Compatibility ECMAScript functions */
 String.prototype.substr = function (start, length) {
 	if (start < 0)
@@ -830,10 +879,6 @@ String.prototype.substr = function (start, length) {
 Date.prototype.getYear = Date.prototype.getFullYear;
 Date.prototype.setYear = Date.prototype.setFullYear;
 Date.prototype.toGMTString = Date.prototype.toUTCString;
-
-console.clear = function() { console.println('--- clear console ---\n'); };
-console.show = function(){};
-console.hide = function(){};
 
 app.plugIns = [];
 app.viewerType = 'Reader';

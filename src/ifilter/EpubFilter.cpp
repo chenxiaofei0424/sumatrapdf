@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
@@ -8,18 +8,20 @@
 #include "utils/HtmlParserLookup.h"
 #include "utils/HtmlPullParser.h"
 #include "utils/WinUtil.h"
-#include "utils/Log.h"
 
-#include "wingui/TreeModel.h"
-#include "DisplayMode.h"
-#include "Controller.h"
+#include "wingui/UIModels.h"
+
+#include "DocProperties.h"
+#include "DocController.h"
 #include "EngineBase.h"
 #include "EbookBase.h"
 #include "EbookDoc.h"
 
 #include "FilterBase.h"
-#include "PdfFilterClsid.h"
+#include "RegistrySearchFilter.h"
 #include "EpubFilter.h"
+
+#include "utils/Log.h"
 
 VOID EpubFilter::CleanUp() {
     log("EpubFilter::Cleanup()\n");
@@ -40,12 +42,13 @@ HRESULT EpubFilter::OnInit() {
 
     // load content of EPUB document into a seekable stream
     HRESULT res;
-    AutoFree data = GetDataFromStream(m_pStream, &res);
+    ByteSlice data = GetDataFromStream(m_pStream, &res);
     if (data.empty()) {
         return res;
     }
 
-    auto strm = CreateStreamFromData(data.AsSpan());
+    IStream* strm = CreateStreamFromData(data);
+    data.Free();
     ScopedComPtr<IStream> stream(strm);
     if (!stream) {
         return E_FAIL;
@@ -61,12 +64,12 @@ HRESULT EpubFilter::OnInit() {
 }
 
 // copied from SumatraProperties.cpp
-static bool IsoDateParse(const WCHAR* isoDate, SYSTEMTIME* timeOut) {
+static bool IsoDateParse(const char* isoDate, SYSTEMTIME* timeOut) {
     ZeroMemory(timeOut, sizeof(SYSTEMTIME));
-    const WCHAR* end = str::Parse(isoDate, L"%4d-%2d-%2d", &timeOut->wYear, &timeOut->wMonth, &timeOut->wDay);
+    const char* end = str::Parse(isoDate, "%4d-%2d-%2d", &timeOut->wYear, &timeOut->wMonth, &timeOut->wDay);
     if (end) {
         // time is optional
-        str::Parse(end, L"T%2d:%2d:%2dZ", &timeOut->wHour, &timeOut->wMinute, &timeOut->wSecond);
+        str::Parse(end, "T%2d:%2d:%2dZ", &timeOut->wHour, &timeOut->wMinute, &timeOut->wSecond);
     }
     return end != nullptr;
     // don't bother about the day of week, we won't display it anyway
@@ -75,7 +78,7 @@ static bool IsoDateParse(const WCHAR* isoDate, SYSTEMTIME* timeOut) {
 static WCHAR* ExtractHtmlText(EpubDoc* doc) {
     log("ExtractHtmlText()\n");
 
-    auto d = doc->GetHtmlData();
+    ByteSlice d = doc->GetHtmlData();
     size_t len = d.size();
 
     str::Str text(len / 2);
@@ -94,7 +97,8 @@ static WCHAR* ExtractHtmlText(EpubDoc* doc) {
                 t->sLen--;
             }
             if (t->sLen > 0) {
-                text.AppendAndFree(ResolveHtmlEntities(t->s, t->sLen));
+                TempStr s = ResolveHtmlEntitiesTemp(t->s, t->sLen);
+                text.Append(s);
                 text.AppendChar(' ');
             }
         } else if (t->IsStartTag()) {
@@ -121,13 +125,14 @@ static WCHAR* ExtractHtmlText(EpubDoc* doc) {
         }
     }
 
-    return strconv::Utf8ToWstr(text.Get());
+    return ToWStr(text.Get());
 }
 
 HRESULT EpubFilter::GetNextChunkValue(ChunkValue& chunkValue) {
     log("EpubFilter::GetNextChunkValue()\n");
 
-    AutoFreeWstr str;
+    TempStr str = nullptr;
+    WCHAR* ws = nullptr;
 
     switch (m_state) {
         case STATE_EPUB_START:
@@ -137,32 +142,34 @@ HRESULT EpubFilter::GetNextChunkValue(ChunkValue& chunkValue) {
 
         case STATE_EPUB_AUTHOR:
             m_state = STATE_EPUB_TITLE;
-            str.Set(m_epubDoc->GetProperty(DocumentProperty::Author));
-            if (!str::IsEmpty(str.Get())) {
-                chunkValue.SetTextValue(PKEY_Author, str);
+            str = m_epubDoc->GetPropertyTemp(kPropAuthor);
+            if (!str::IsEmpty(str)) {
+                ws = ToWStrTemp(str);
+                chunkValue.SetTextValue(PKEY_Author, ws);
                 return S_OK;
             }
             // fall through
 
         case STATE_EPUB_TITLE:
             m_state = STATE_EPUB_DATE;
-            str.Set(m_epubDoc->GetProperty(DocumentProperty::Title));
+            str = m_epubDoc->GetPropertyTemp(kPropTitle);
             if (!str) {
-                str.Set(m_epubDoc->GetProperty(DocumentProperty::Subject));
+                str = m_epubDoc->GetPropertyTemp(kPropSubject);
             }
-            if (!str::IsEmpty(str.Get())) {
-                chunkValue.SetTextValue(PKEY_Title, str);
+            if (!str::IsEmpty(str)) {
+                ws = ToWStrTemp(str);
+                chunkValue.SetTextValue(PKEY_Title, ws);
                 return S_OK;
             }
             // fall through
 
         case STATE_EPUB_DATE:
             m_state = STATE_EPUB_CONTENT;
-            str.Set(m_epubDoc->GetProperty(DocumentProperty::ModificationDate));
+            str = m_epubDoc->GetPropertyTemp(kPropModificationDate);
             if (!str) {
-                str.Set(m_epubDoc->GetProperty(DocumentProperty::CreationDate));
+                str = m_epubDoc->GetPropertyTemp(kPropCreationDate);
             }
-            if (!str::IsEmpty(str.Get())) {
+            if (!str::IsEmpty(str)) {
                 SYSTEMTIME systime;
                 if (IsoDateParse(str, &systime)) {
                     FILETIME filetime;
@@ -175,9 +182,10 @@ HRESULT EpubFilter::GetNextChunkValue(ChunkValue& chunkValue) {
 
         case STATE_EPUB_CONTENT:
             m_state = STATE_EPUB_END;
-            str.Set(ExtractHtmlText(m_epubDoc));
-            if (!str::IsEmpty(str.Get())) {
-                chunkValue.SetTextValue(PKEY_Search_Contents, str, CHUNK_TEXT);
+            ws = ExtractHtmlText(m_epubDoc);
+            if (!str::IsEmpty(ws)) {
+                chunkValue.SetTextValue(PKEY_Search_Contents, ws, CHUNK_TEXT);
+                str::Free(ws);
                 return S_OK;
             }
             // fall through

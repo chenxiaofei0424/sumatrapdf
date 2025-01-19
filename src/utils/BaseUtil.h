@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 #ifndef BaseUtil_h
@@ -24,21 +24,22 @@
 #define OS_WIN 0
 #endif
 
+// https://learn.microsoft.com/en-us/cpp/preprocessor/predefined-macros
 #if defined(_M_IX86) || defined(__i386__)
-#define IS_32BIT 1
 #define IS_INTEL_32 1
-#define IS_64BIT 0
 #define IS_INTEL_64 0
-#endif
-
-#if defined(_M_X64) || defined(__x86_64__)
-#define IS_64BIT 1
+#define IS_ARM_64 0
+#elif defined(_M_X64) || defined(__x86_64__)
 #define IS_INTEL_64 1
-#define IS_32BIT 0
 #define IS_INTEL_32 0
+#define IS_ARM_64 0
+#elif defined(_M_ARM64)
+#define IS_INTEL_64 0
+#define IS_INTEL_32 0
+#define IS_ARM_64 1
+#else
+#error "unsupported arch"
 #endif
-
-// TODO: ARM 64bit
 
 /* OS_UNIX - Any Unix-like system */
 #if OS_DARWIN || OS_LINUX || defined(unix) || defined(__unix) || defined(__unix__)
@@ -83,7 +84,9 @@
 #include "BuildConfig.h"
 
 #define NOMINMAX
+#include <winsock2.h> // must include before <windows.h>
 #include <windows.h>
+#include <ws2def.h>
 #include <unknwn.h>
 #include <shlwapi.h>
 #include <shlobj.h>
@@ -92,6 +95,7 @@
 #include <winsafer.h>
 #include <wininet.h>
 #include <versionhelpers.h>
+#include <tlhelp32.h>
 
 // nasty but necessary
 #if defined(min) || defined(max)
@@ -126,15 +130,10 @@
 // most common c++ includes
 #include <cstdint>
 #include <algorithm>
-#include <functional>
 #include <memory>
 #include <string>
 #include <array>
-#include <vector>
 #include <limits>
-#include <span>
-//#include <iostream>
-//#include <locale>
 
 using i8 = int8_t;
 using u8 = uint8_t;
@@ -164,6 +163,8 @@ using uint = unsigned int;
 
 #define NoOp() ((void)0)
 #define dimof(array) (sizeof(DimofSizeHelper(array)))
+#define dimofi(array) (int)(sizeof(DimofSizeHelper(array)))
+
 template <typename T, size_t N>
 char (&DimofSizeHelper(T (&array)[N]))[N];
 
@@ -184,6 +185,11 @@ char (&DimofSizeHelper(T (&array)[N]))[N];
 #define IS_UNUSED __attribute__((unused))
 #endif
 
+// __analysis_assume is defined by msvc for prefast analysis
+#if !defined(__analysis_assume)
+#define __analysis_assume(x)
+#endif
+
 #if COMPILER_MSVC
 #pragma warning(push)
 #pragma warning(disable : 6011) // silence /analyze: de-referencing a nullptr pointer
@@ -202,65 +208,58 @@ inline void CrashMe() {
 #pragma warning(pop)
 #endif
 
-// CrashIf() is like assert() except it crashes in debug and pre-release builds.
+// ReportIf() is like assert() except it sends crash report in pre-release and debug
+// builds.
 // The idea is that assert() indicates "can't possibly happen" situation and if
 // it does happen, we would like to fix the underlying cause.
 // In practice in our testing we rarely get notified when an assert() is triggered
 // and they are disabled in builds running on user's computers.
-// Now that we have crash reporting, we can get notified about such cases if we
-// use CrashIf() instead of assert(), which we should be doing from now on.
 //
+// ReportAlwaysIf() sends a report even in release builds. This is to catch the most
+// thorny scenarios.
 // Enabling it in pre-release builds but not in release builds is trade-off between
-// shipping small executables (each CrashIf() adds few bytes of code) and having
+// shipping small executables (each ReportIf() adds few bytes of code) and having
 // more testing on user's machines and not only in our personal testing.
-// To crash uncoditionally use CrashAlwaysIf(). It should only be used in
+// To crash uncoditionally use ReportIf(). It should only be used in
 // rare cases where we really want to know a given condition happens. Before
-// each release we should audit the uses of CrashAlawysIf()
-//
-// Just as with assert(), the condition is not guaranteed to be executed
-// in some builds, so it shouldn't contain the actual logic of the code
+// each release we should audit the uses of ReportAlwaysIf()
 
-// TODO: maybe change to NO_INLINE since now I can filter callstack
-// on the server
-inline void CrashIfFunc(bool cond) {
-    if (!cond) {
-        return;
-    }
-    if (IsDebuggerPresent()) {
-        DebugBreak();
-        return;
-    }
+// in release builds ReportIf()/ReportIfQuick() will break if running under
+// the debugger. In other builds it send a debug report
+#undef UPLOAD_REPORT
 #if defined(PRE_RELEASE_VER) || defined(DEBUG) || defined(ASAN_BUILD)
-    CrashMe();
-#endif
-}
-
-// __analysis_assume is defined by msvc for prefast analysis
-#if !defined(__analysis_assume)
-#define __analysis_assume(x)
+#define UPLOAD_REPORT
 #endif
 
-#define CrashAlwaysIf(cond)         \
+extern void _uploadDebugReport(const char*, bool, bool);
+void BreakIfUnderDebugger();
+
+#ifdef UPLOAD_REPORT
+#define ReportIfCond(cond, condStr, isCrash, captureCallstack)      \
+    __analysis_assume(!(cond));                                     \
+    do {                                                            \
+        if (cond) {                                                 \
+            _uploadDebugReport(condStr, isCrash, captureCallstack); \
+        }                                                           \
+    } while (0)
+#else
+// version that is a no-op
+#define ReportIfCond(cond, x, y, z) \
+    __analysis_assume(!(cond));     \
     do {                            \
-        __analysis_assume(!(cond)); \
         if (cond) {                 \
-            CrashMe();              \
+            BreakIfUnderDebugger(); \
         }                           \
     } while (0)
+#endif
 
-#define CrashIf(cond)               \
-    do {                            \
-        __analysis_assume(!(cond)); \
-        CrashIfFunc(cond);          \
-    } while (0)
-
-void _submitDebugReportIfFunc(bool cond, __unused const char* condStr);
-
-#define ReportIf(cond)                         \
-    do {                                       \
-        __analysis_assume(!(cond));            \
-        _submitDebugReportIfFunc(cond, #cond); \
-    } while (0)
+#define ReportIf(cond) ReportIfCond(cond, #cond, false, true)
+#define ReportIfQuick(cond) ReportIfCond(cond, #cond, false, false)
+#if defined(DEBUG)
+#define ReportDebugIf(cond) ReportIfCond(cond, #cond, false, true)
+#else
+#define ReportDebugIf(cond)
+#endif
 
 void* AllocZero(size_t count, size_t size);
 
@@ -285,22 +284,14 @@ inline void ZeroArray(T& a) {
     ZeroMemory((void*)&a, size);
 }
 
-template <typename T>
-inline T limitValue(T val, T min, T max) {
-    CrashIf(min > max);
-    if (val < min) {
-        return min;
-    }
-    if (val > max) {
-        return max;
-    }
-    return val;
-}
+int limitValue(int val, int min, int max);
+DWORD limitValue(DWORD val, DWORD min, DWORD max);
+float limitValue(float val, float min, float max);
 
 // return true if adding n to val overflows. Only valid for n > 0
 template <typename T>
 inline bool addOverflows(T val, T n) {
-    CrashIf(!(n > 0));
+    ReportIf(!(n > 0));
     T res = val + n;
     return val > res;
 }
@@ -310,15 +301,61 @@ bool memeq(const void* s1, const void* s2, size_t len);
 
 size_t RoundToPowerOf2(size_t size);
 u32 MurmurHash2(const void* key, size_t len);
+u32 MurmurHashWStrI(const WCHAR*);
+u32 MurmurHashStrI(const char*);
 
 size_t RoundUp(size_t n, size_t rounding);
 int RoundUp(int n, int rounding);
 char* RoundUp(char*, int rounding);
 
 template <typename T>
-void ListInsert(T** root, T* el) {
+void ListDelete(T* root) {
+    T* next;
+    T* curr = root;
+    while (curr) {
+        next = curr->next;
+        delete curr;
+        curr = next;
+    }
+}
+
+template <typename T>
+void ListInsertFront(T** root, T* el) {
     el->next = *root;
     *root = el;
+}
+
+template <typename T>
+void ListInsertEnd(T** root, T* el) {
+    el->next = nullptr;
+    if (!*root) {
+        *root = el;
+        return;
+    }
+    T** prevPtr = root;
+    T** currPtr = root;
+    T* curr;
+    while (*currPtr) {
+        prevPtr = currPtr;
+        curr = *currPtr;
+        currPtr = &(curr->next);
+    }
+    T* prev = *prevPtr;
+    prev->next = el;
+}
+
+template <typename T>
+void ListReverse(T** root) {
+    T* newRoot = nullptr;
+    T* next;
+    T* el = *root;
+    while (el) {
+        next = el->next;
+        el->next = newRoot;
+        newRoot = el;
+        el = next;
+    }
+    *root = newRoot;
 }
 
 template <typename T>
@@ -339,13 +376,24 @@ bool ListRemove(T** root, T* el) {
     return true;
 }
 
+template <typename T>
+int ListLen(T* root) {
+    int n = 0;
+    T* curr = root;
+    while (curr) {
+        n++;
+        curr = curr->next;
+    }
+    return n;
+}
+
 // Base class for allocators that can be provided to Vec class
 // (and potentially others). Needed because e.g. in crash handler
 // we want to use Vec but not use standard malloc()/free() functions
 struct Allocator {
     Allocator() = default;
     virtual ~Allocator() = default;
-    ;
+
     virtual void* Alloc(size_t size) = 0;
     virtual void* Realloc(void* mem, size_t size) = 0;
     virtual void Free(const void* mem) = 0;
@@ -355,7 +403,7 @@ struct Allocator {
     static void* Alloc(Allocator* a, size_t size);
 
     template <typename T>
-    static T* Alloc(Allocator* a, size_t n = 1) {
+    static T* AllocArray(Allocator* a, size_t n = 1) {
         size_t size = n * sizeof(T);
         return (T*)AllocZero(a, size);
     }
@@ -393,9 +441,9 @@ struct PoolAllocator : Allocator {
         // data follows here
     };
 
-    Block* currBlock{nullptr};
-    Block* firstBlock{nullptr};
-    int nAllocs{0};
+    Block* currBlock = nullptr;
+    Block* firstBlock = nullptr;
+    int nAllocs = 0;
     CRITICAL_SECTION cs;
 
     PoolAllocator();
@@ -459,8 +507,7 @@ struct PoolAllocator : Allocator {
 struct HeapAllocator : Allocator {
     HANDLE allocHeap = nullptr;
 
-    explicit HeapAllocator(size_t initialSize = 128 * 1024) {
-        allocHeap = HeapCreate(0, initialSize, 0);
+    explicit HeapAllocator(size_t initialSize = 128 * 1024) : allocHeap(HeapCreate(0, initialSize, 0)) {
     }
     ~HeapAllocator() override {
         HeapDestroy(allocHeap);
@@ -521,6 +568,11 @@ struct Foo {
     Kind kind;
 };
 
+or:
+
+struct Foo : KindBase {
+};
+
 extern Kind kindFoo;
 
 // in foo.cpp
@@ -528,6 +580,15 @@ Kind kindFoo = "foo";
 */
 
 using Kind = const char*;
+
+struct KindBase {
+    Kind kind;
+
+    Kind GetKind() const {
+        return kind;
+    }
+};
+
 inline bool isOfKindHelper(Kind k1, Kind k2) {
     return k1 == k2;
 }
@@ -564,9 +625,172 @@ class ExitScopeHelp {
     }
 };
 
+// it's 32-bit value which we cast to int for ease of use
+struct AtomicInt {
+    AtomicInt() = default;
+    ~AtomicInt() = default;
+    int Set(int n);
+    int Inc();
+    int Dec();
+    int Add(int n);
+    int Sub(int n);
+    int Get() const;
+
+  private:
+    volatile LONG val = 0;
+};
+
+using func0Ptr = void (*)(void*);
+using funcVoidPtr = void (*)();
+
+#define kFuncNoArg (void*)-1
+
+// the simplest possible function that ties a function and a single argument to it
+// we get type safety and convenience with mkFunc()
+struct Func0 {
+    void* fn = nullptr;
+    void* userData = nullptr;
+
+    Func0() = default;
+    // copy constructor
+    Func0(const Func0& that) {
+        this->fn = that.fn;
+        this->userData = that.userData;
+    }
+    // copy assignment operator
+    Func0& operator=(const Func0& that) {
+        if (this != &that) {
+            this->fn = that.fn;
+            this->userData = that.userData;
+        }
+        return *this;
+    }
+    ~Func0() = default;
+
+    bool IsEmpty() const {
+        return fn == nullptr;
+    }
+    bool IsValid() const {
+        return fn != nullptr;
+    }
+    void Call() const {
+        if (!fn) {
+            return;
+        }
+        if (userData == kFuncNoArg) {
+            auto func = (funcVoidPtr)fn;
+            func();
+            return;
+        }
+        auto func = (func0Ptr)fn;
+        func(userData);
+    }
+};
+Func0 MkFunc0Void(funcVoidPtr fn);
+
+template <typename T>
+Func0 MkFunc0(void (*fn)(T*), T* d) {
+    auto res = Func0{};
+    res.fn = (func0Ptr)fn;
+    res.userData = (void*)d;
+    return res;
+}
+
+template <typename T>
+struct Func1 {
+    void (*fn)(void*, T) = nullptr;
+    void* userData = nullptr;
+
+    Func1() = default;
+    // copy constructor
+    Func1(const Func1& that) {
+        this->fn = that.fn;
+        this->userData = that.userData;
+    }
+    // copy assignment operator
+    Func1& operator=(const Func1& that) {
+        if (this != &that) {
+            this->fn = that.fn;
+            this->userData = that.userData;
+        }
+        return *this;
+    }
+    ~Func1() = default;
+
+    bool IsValid() const {
+        return fn != nullptr;
+    }
+    bool IsEmpty() const {
+        return fn == nullptr;
+    }
+    void Call(T arg) const {
+        if (!fn) {
+            return;
+        }
+        if (userData == kFuncNoArg) {
+            using fptr = void (*)(T);
+            auto func = (fptr)fn;
+            func(arg);
+            return;
+        }
+        fn(userData, arg);
+    }
+};
+
+template <typename T1, typename T2>
+Func1<T2> MkFunc1(void (*fn)(T1*, T2), T1* d) {
+    auto res = Func1<T2>{};
+    using fptr = void (*)(void*, T2);
+    res.fn = (fptr)fn;
+    res.userData = (void*)d;
+    return res;
+}
+
+template <typename T2>
+Func1<T2> MkFunc1Void(void (*fn)(T2)) {
+    auto res = Func1<T2>{};
+    using fptr = void (*)(void*, T2);
+    res.fn = (fptr)fn;
+    res.userData = kFuncNoArg;
+    return res;
+}
+
+template <typename T1, typename T2>
+Func1<T2>* NewFunc1(void (*fn)(T1*, T2), T1* d) {
+    auto res = new Func1<T2>{};
+    using fptr = void (*)(void*, T2);
+    res->fn = (fptr)fn;
+    res->userData = (void*)d;
+    return res;
+}
+
+class AtomicBool {
+  public:
+    AtomicBool() = default;
+    ~AtomicBool() = default;
+    bool Get() const;
+    bool Set(bool newValue);
+
+  private:
+    volatile LONG val = 0;
+};
+
+struct AtomicRefCount {
+    AtomicRefCount() = default;
+    ~AtomicRefCount() = default;
+    int Add();
+    // returns true if counter reaches 0, meaning it has been released
+    // by all who held a reference to it
+    int Dec();
+
+  private:
+    // starts life as acquired
+    volatile LONG val = 1;
+};
+
 #define defer const auto& CONCAT(defer__, __LINE__) = ExitScopeHelp() + [&]()
 
-extern std::atomic<int> gAllowAllocFailure;
+extern LONG gAllowAllocFailure;
 
 /* How to use:
 defer { free(tools_filename); };
@@ -574,15 +798,18 @@ defer { fclose(f); };
 defer { instance->Release(); };
 */
 
+// exists just to mark the intent, needed by both StrUtil.h and TempAllocator.h
+using TempStr = char*;
+using TempWStr = WCHAR*;
+
 #include "GeomUtil.h"
-#include "StrSlice.h"
+#include "Vec.h"
 #include "StrUtil.h"
+#include "TempAllocator.h"
+#include "StrVec.h"
 #include "StrconvUtil.h"
 #include "Scoped.h"
-#include "Vec.h"
-#include "StringViewUtil.h"
 #include "ColorUtil.h"
-#include "TempAllocator.h"
 
 // lstrcpy is dangerous so forbid using it
 #ifdef lstrcpy

@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 /* VecSegmented has (mostly) the same API as Vec but allocates
@@ -24,7 +24,7 @@ struct VecSegmented {
         return reinterpret_cast<T*>(p);
     }
 
-    [[nodiscard]] size_t Size() const {
+    size_t Size() const {
         return allocator.nAllocs;
     }
 

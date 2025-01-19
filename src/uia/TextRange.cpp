@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
@@ -6,13 +6,13 @@
 #include "utils/WinDynCalls.h"
 #include "utils/WinUtil.h"
 
-#include "wingui/TreeModel.h"
-#include "DisplayMode.h"
-#include "Controller.h"
+#include "wingui/UIModels.h"
+
+#include "Settings.h"
+#include "DocController.h"
 #include "EngineBase.h"
 #include "uia/TextRange.h"
-#include "SettingsStructs.h"
-#include "EngineCreate.h"
+#include "EngineAll.h"
 #include "DisplayModel.h"
 #include "uia/DocumentProvider.h"
 #include "uia/Constants.h"
@@ -91,8 +91,8 @@ bool SumatraUIAutomationTextRange::IsEmptyRange() const {
 }
 
 int SumatraUIAutomationTextRange::GetPageGlyphCount(int pageNum) {
-    CrashIf(!document->IsDocumentLoaded());
-    CrashIf(pageNum <= 0);
+    ReportIf(!document->IsDocumentLoaded());
+    ReportIf(pageNum <= 0);
 
     int pageLen;
     document->GetDM()->textCache->GetTextForPage(pageNum, &pageLen);
@@ -100,7 +100,7 @@ int SumatraUIAutomationTextRange::GetPageGlyphCount(int pageNum) {
 }
 
 int SumatraUIAutomationTextRange::GetPageCount() {
-    CrashIf(!document->IsDocumentLoaded());
+    ReportIf(!document->IsDocumentLoaded());
 
     return document->GetDM()->PageCount();
 }
@@ -218,7 +218,7 @@ ULONG STDMETHODCALLTYPE SumatraUIAutomationTextRange::AddRef() {
 
 ULONG STDMETHODCALLTYPE SumatraUIAutomationTextRange::Release() {
     LONG res = InterlockedDecrement(&refCount);
-    CrashIf(res < 0);
+    ReportIf(res < 0);
     if (0 == res) {
         delete this;
     }
@@ -454,7 +454,7 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationTextRange::GetText(int maxLength, B
     selection.StartAt(startPage, startGlyph);
     selection.SelectUpTo(endPage, endGlyph);
 
-    AutoFreeWstr selected_text(selection.ExtractText(L"\r\n"));
+    AutoFreeWStr selected_text(selection.ExtractText("\r\n"));
     size_t selected_text_length = str::Len(selected_text);
 
     // -1 and [0, inf) are allowed
@@ -558,11 +558,11 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationTextRange::MoveEndpointByUnit(TextP
         virtual bool NextEndpoint() const {
             // HACK: Declaring these as pure virtual causes "unreferenced local variable" warnings ==> define a dummy
             // body to get rid of warnings
-            CrashIf(true);
+            ReportIf(true);
             return false;
         }
         virtual bool PrevEndpoint() const {
-            CrashIf(true);
+            ReportIf(true);
             return false;
         }
 
@@ -842,7 +842,7 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationTextRange::GetChildren(SAFEARRAY** 
             LONG index = it->GetPageNum() - startPage;
 
             HRESULT hr = SafeArrayPutElement(psa, &index, it);
-            CrashIf(FAILED(hr));
+            ReportIf(FAILED(hr));
             it->AddRef();
         }
 

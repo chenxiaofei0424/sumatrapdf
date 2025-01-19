@@ -1,18 +1,19 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
 License: GPLv3 */
 
 #include "utils/BaseUtil.h"
+#include "utils/DirIter.h"
 #include "utils/FileUtil.h"
-#include "utils/ScopedWin.h"
+#include "utils/ThreadUtil.h"
+#include "utils/UITask.h"
 #include "utils/WinUtil.h"
 
-#include "wingui/TreeModel.h"
-#include "DisplayMode.h"
-#include "Controller.h"
-#include "EngineBase.h"
-#include "SettingsStructs.h"
-#include "FileHistory.h"
+#include "Settings.h"
 #include "GlobalPrefs.h"
+#include "FileThumbnails.h"
+#include "FileHistory.h"
+
+#include "utils/Log.h"
 
 /* Handling of file history list.
 
@@ -38,7 +39,9 @@ quits.
 
 // maximum number of files to remember in total
 // (to keep the settings file within reasonable bounds)
-#define FILE_HISTORY_MAX_FILES 1000
+constexpr size_t kFileHistoryMaxFiles = 1000;
+
+FileHistory gFileHistory;
 
 // sorts the most often used files first
 static int cmpOpenCount(const void* a, const void* b) {
@@ -61,7 +64,7 @@ static int cmpOpenCount(const void* a, const void* b) {
 }
 
 void FileHistory::Append(FileState* fs) const {
-    CrashIf(!fs->filePath);
+    ReportIf(!fs->filePath);
     states->Append(fs);
 }
 
@@ -96,11 +99,28 @@ FileState* FileHistory::Get(size_t index) const {
     return nullptr;
 }
 
-FileState* FileHistory::Find(const char* filePath, size_t* idxOut) const {
+FileState* FileHistory::FindByPath(const char* filePath) const {
+    int idxExact = -1;
+    int n = states->Size();
+    for (int i = 0; i < n; i++) {
+        FileState* fs = states->at(i);
+        if (str::EqI(fs->filePath, filePath)) {
+            idxExact = i;
+        }
+    }
+    if (idxExact == -1) {
+        return nullptr;
+    }
+    return states->at(idxExact);
+}
+
+// returns an exact match by path or match by just file name
+// TODO: audit the uses of FindByName and maybe convert to FindByPath
+FileState* FileHistory::FindByName(const char* filePath, size_t* idxOut) const {
     int idxExact = -1;
     int idxFileNameMatch = -1;
-    const char* fileName = path::GetBaseNameTemp(filePath);
-    int n = states->isize();
+    TempStr fileName = path::GetBaseNameTemp(filePath);
+    int n = states->Size();
     for (int i = 0; i < n; i++) {
         FileState* fs = states->at(i);
         if (str::EqI(fs->filePath, filePath)) {
@@ -123,11 +143,11 @@ FileState* FileHistory::Find(const char* filePath, size_t* idxOut) const {
 }
 
 FileState* FileHistory::MarkFileLoaded(const char* filePath) const {
-    CrashIf(!filePath);
+    ReportIf(!filePath);
     // if a history entry with the same name already exists,
     // then reuse it. That way we don't have duplicates and
     // the file moves to the front of the list
-    FileState* fs = Find(filePath, nullptr);
+    FileState* fs = FindByPath(filePath);
     if (!fs) {
         fs = NewDisplayState(filePath);
         fs->useDefaultState = true;
@@ -141,8 +161,8 @@ FileState* FileHistory::MarkFileLoaded(const char* filePath) const {
 }
 
 bool FileHistory::MarkFileInexistent(const char* filePath, bool hide) const {
-    CrashIf(!filePath);
-    FileState* state = Find(filePath, nullptr);
+    ReportIf(!filePath);
+    FileState* state = FindByPath(filePath);
     if (!state) {
         return false;
     }
@@ -175,7 +195,7 @@ bool FileHistory::MarkFileInexistent(const char* filePath, bool hide) const {
 // and with all missing states filtered out
 // caller needs to delete the result (but not the contained states)
 void FileHistory::GetFrequencyOrder(Vec<FileState*>& list) const {
-    CrashIf(list.size() > 0);
+    ReportIf(list.size() > 0);
     size_t i = 0;
     for (FileState* ds : *states) {
         ds->index = i++;
@@ -196,8 +216,9 @@ void FileHistory::Purge(bool alwaysUseDefaultState) const {
     if (alwaysUseDefaultState) {
         Vec<FileState*> frequencyList;
         GetFrequencyOrder(frequencyList);
-        if (frequencyList.size() > kFileHistoryMaxRecent) {
-            minOpenCount = frequencyList.at(kFileHistoryMaxFrequent)->openCount / 2;
+        if (frequencyList.size() > kFileHistoryMaxFrequent) {
+            auto el = frequencyList.at(kFileHistoryMaxFrequent);
+            minOpenCount = el->openCount / 2;
         }
     }
 
@@ -211,7 +232,7 @@ void FileHistory::Purge(bool alwaysUseDefaultState) const {
         if (state->isMissing && (alwaysUseDefaultState || state->useDefaultState)) {
             // forget about missing documents without valuable state
             states->RemoveAt(j - 1);
-        } else if (j > FILE_HISTORY_MAX_FILES) {
+        } else if (j > kFileHistoryMaxFiles) {
             // forget about files last opened longer ago than the last FILE_HISTORY_MAX_FILES ones
             states->RemoveAt(j - 1);
         } else if (alwaysUseDefaultState && state->openCount < minOpenCount && j > kFileHistoryMaxRecent) {
@@ -222,4 +243,175 @@ void FileHistory::Purge(bool alwaysUseDefaultState) const {
         }
         DeleteDisplayState(state);
     }
+}
+
+// list of recently closed documents, most recent at the end
+StrVec gClosedDocuments;
+
+int RecentlyCloseDocumentsCount() {
+    return gClosedDocuments.Size();
+}
+
+void RememberRecentlyClosedDocument(const char* path) {
+    if (str::IsEmptyOrWhiteSpace(path)) {
+        return;
+    }
+    gClosedDocuments.Append(path);
+}
+
+char* PopRecentlyClosedDocument() {
+    int n = gClosedDocuments.Size();
+    if (n > 0) {
+        return gClosedDocuments.RemoveAtFast(n - 1);
+    }
+    return nullptr;
+}
+
+// --- thumbnail cache delete
+
+static bool shouldDeleteThumbnail = false;
+
+// TODO: https://github.com/sumatrapdfreader/sumatrapdf/issues/4286
+// Not sure why the behavior started changing after I re-wrote StrVec
+// is the issue that files are marked as isMissing in FileExistenceCheckerThread?
+// is it because we don't return enough itms if GetFrequencyOrder()? Is it a bug
+// in StrVec::Remove()?
+// either way, I just disabled deleting of stale thumbnail because it seems fishy
+// Should probably change the logic to: remove thumbnails for files marked as missing
+
+// removes thumbnails that don't belong to any frequently used item in file history
+void CleanUpThumbnailCache() {
+    const FileHistory& fileHistory = gFileHistory;
+    TempStr thumbsDir = GetThumbnailCacheDirTemp();
+
+    StrVec filePaths;
+    DirIter di{thumbsDir};
+    for (DirIterEntry* de : di) {
+        if (path::Match(de->filePath, "*.png")) {
+            filePaths.Append(de->filePath);
+        }
+    }
+    if (filePaths.IsEmpty()) {
+        return;
+    }
+
+    bool ok;
+    // remove files that should not be deleted
+    Vec<FileState*> list;
+    fileHistory.GetFrequencyOrder(list);
+    int n = 0;
+    for (auto& fs : list) {
+        if (n++ > kFileHistoryMaxFrequent * 2) {
+            break;
+        }
+        TempStr path = GetThumbnailPathTemp(fs->filePath);
+        if (!path) {
+            continue;
+        }
+        ok = filePaths.Remove(path);
+        if (!ok) {
+            logf("CleanUpThumbnailCache: failed to remove '%s'\n", path);
+        }
+    }
+
+    for (char* path : filePaths) {
+        logf("CleanUpThumbnailCache: deleting '%s'\n", path);
+        if (shouldDeleteThumbnail) {
+            file::Delete(path);
+        }
+    }
+}
+
+// --- file existence check
+
+struct FileExistenceData {
+    FileExistenceData() = default;
+    ~FileExistenceData() = default;
+
+    StrVec toCheck;
+    StrVec missing;
+};
+
+extern void MaybeRedrawHomePage();
+
+// document path is either a file or a directory
+// (when browsing images inside directory).
+bool DocumentPathExists(const char* path) {
+    if (file::Exists(path) || dir::Exists(path)) {
+        return true;
+    }
+    auto pos = str::FindCharLast(path + 2, ':');
+    if (!pos) {
+        return false;
+    }
+    // remove information needed for pointing at embedded documents
+    // (e.g. "C:\path\file.pdf:3:0") to check at least whether the
+    // container document exists
+    TempStr realPath = str::DupTemp(path, pos - path);
+    return file::Exists(realPath);
+}
+
+static void HideMissingFiles(FileExistenceData* d) {
+    for (const char* path : d->missing) {
+        gFileHistory.MarkFileInexistent(path, true);
+    }
+    // update the Frequently Read page in case it's been displayed already
+    MaybeRedrawHomePage();
+    delete d;
+}
+
+static void FileExistenceCheckerAsync(FileExistenceData* d) {
+    StrVec& toCheck = d->toCheck;
+    // filters all file paths on network drives, removable drives and
+    // all paths which still exist from the list (remaining paths will
+    // be marked as inexistent in gFileHistory)
+    int n = toCheck.Size();
+    for (int i = 0; i < n; i++) {
+        const char* path = toCheck[i];
+        if (!path) {
+            continue;
+        }
+        // files on network / removable drives can be temporarily missing
+        if (!path::IsOnFixedDrive(path)) {
+            continue;
+        }
+        if (DocumentPathExists(path)) {
+            continue;
+        }
+        d->missing.Append(path);
+        logf("FileExistenceChecker: missing '%s' at %d\n", path, i + 1);
+    }
+
+    Func0 fn = MkFunc0<FileExistenceData>(HideMissingFiles, d);
+    uitask::Post(fn, "TaskHideMissingFiles");
+}
+
+static void GetFilePathsToCheck(StrVec& toCheck) {
+    FileState* fs;
+    for (size_t i = 0; i < 2 * kFileHistoryMaxRecent && (fs = gFileHistory.Get(i)) != nullptr; i++) {
+        if (!fs->isMissing) {
+            char* fp = fs->filePath;
+            toCheck.Append(fp);
+        }
+    }
+    // add missing paths from the list of most frequently opened documents
+    Vec<FileState*> frequencyList;
+    gFileHistory.GetFrequencyOrder(frequencyList);
+    size_t iMax = std::min<size_t>(2 * kFileHistoryMaxFrequent, frequencyList.size());
+    for (size_t i = 0; i < iMax; i++) {
+        fs = frequencyList.at(i);
+        char* fp = fs->filePath;
+        AppendIfNotExists(&toCheck, fp);
+    }
+}
+
+void RemoveNonExistentFilesAsync() {
+    auto d = new FileExistenceData();
+    GetFilePathsToCheck(d->toCheck);
+    if (d->toCheck.Size() == 0) {
+        return;
+    }
+    logf("RemoveNonExistentFilesAsync: starting FileExistenceCheckerThread to check %d files\n", d->toCheck.Size());
+    Func0 fn = MkFunc0<FileExistenceData>(FileExistenceCheckerAsync, d);
+    RunAsync(fn, "FileExistenceThread");
 }

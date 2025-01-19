@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 /*
@@ -47,17 +47,10 @@ enum class Type {
     WStr,
 
     // for Inst.t
-    FormatStr, // from format string
+    RawStr, // copy part of format string
     Any,
 
     None,
-};
-
-// formatting instruction
-struct Inst {
-    Type t;
-    int argNo;           // <0 for strings that come from formatting string
-    std::string_view sv; // if t is Type::FormatStr
 };
 
 // argument to a formatting instruction
@@ -70,9 +63,9 @@ struct Arg {
         i64 i;
         float f;
         double d;
-        std::string_view sv;
-        std::wstring_view wsv;
-    } u = {0};
+        const char* s;
+        const WCHAR* ws;
+    } u{};
 
     Arg() = default;
 
@@ -82,6 +75,16 @@ struct Arg {
     }
 
     Arg(int arg) {
+        t = Type::Int;
+        u.i = (i64)arg;
+    }
+
+    Arg(size_t arg) {
+        t = Type::Int;
+        u.i = (i64)arg;
+    }
+
+    Arg(i64 arg) {
         t = Type::Int;
         u.i = arg;
     }
@@ -96,43 +99,22 @@ struct Arg {
         u.d = d;
     }
 
-    Arg(std::string_view arg) {
-        t = Type::Str;
-        u.sv = arg;
-    }
-
     Arg(const char* arg) {
         t = Type::Str;
-        u.sv = arg;
-    }
-
-    Arg(std::wstring_view arg) {
-        t = Type::WStr;
-        u.wsv = arg;
+        u.s = arg;
     }
 
     Arg(const WCHAR* arg) {
         t = Type::WStr;
-        u.wsv = arg;
+        u.ws = arg;
     }
 };
 
-struct Fmt {
-    explicit Fmt(const char* fmt);
+char* Format(const char* s, const Arg& a1 = Arg(), const Arg& a2 = Arg(), const Arg& a3 = Arg(), const Arg& a4 = Arg(),
+             const Arg& a5 = Arg(), const Arg& a6 = Arg());
 
-    std::string_view Eval(const Arg** args, int nArgs);
+char* FormatTemp(const char* s, const Arg);
+char* FormatTemp(const char* s, const Arg, const Arg);
+char* FormatTemp(const char* s, const Arg, const Arg, const Arg);
 
-    bool isOk{true}; // true if mismatch between formatting instruction and args
-
-    const char* format{nullptr};
-    Inst instructions[32]; // 32 should be big enough for everybody
-    int nInst{0};
-
-    int currArgNo{0};
-    int currPercArgNo{0};
-    str::Str res;
-};
-
-std::string_view Format(const char* s, const Arg& a1 = Arg(), const Arg& a2 = Arg(), const Arg& a3 = Arg(),
-                        const Arg& a4 = Arg(), const Arg& a5 = Arg(), const Arg& a6 = Arg());
 } // namespace fmt

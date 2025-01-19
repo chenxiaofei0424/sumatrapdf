@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2024 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 39 Mesa Street, Suite 108A, San Francisco,
+// CA 94129, USA, for further information.
+
 /* PDFWidget interface */
 
 JNIEXPORT jstring JNICALL
@@ -307,17 +329,16 @@ FUN(PDFWidget_checkDigest)(JNIEnv *env, jobject self, jobject jverifier)
 }
 
 JNIEXPORT jboolean JNICALL
-FUN(PDFWidget_incrementalChangeAfterSigning)(JNIEnv *env, jobject self)
+FUN(PDFWidget_incrementalChangeSinceSigning)(JNIEnv *env, jobject self)
 {
 	fz_context *ctx = get_context(env);
 	pdf_annot *widget = from_PDFWidget_safe(env, self);
-	pdf_document *pdf = pdf_annot_page(ctx, widget)->doc;
 	jboolean change = JNI_FALSE;
 
-	if (!ctx || !widget || !pdf) return JNI_FALSE;
+	if (!ctx || !widget) return JNI_FALSE;
 
 	fz_try(ctx)
-		change = pdf_signature_incremental_change_since_signing(ctx, pdf, pdf_annot_obj(ctx, widget));
+		change = pdf_incremental_change_since_signing_widget(ctx, widget);
 	fz_catch(ctx)
 		jni_rethrow(env, ctx);
 
@@ -628,4 +649,21 @@ FUN(PDFWidget_layoutTextWidget)(JNIEnv *env, jobject self)
 	fz_drop_layout(ctx, layout);
 
 	return jlayout;
+}
+
+JNIEXPORT jstring JNICALL
+FUN(PDFWidget_getLabel)(JNIEnv *env, jobject self)
+{
+	fz_context *ctx = get_context(env);
+	pdf_annot *widget = from_PDFWidget_safe(env, self);
+	const char *text = NULL;
+
+	if (!ctx || !widget) return NULL;
+
+	fz_try(ctx)
+		text = pdf_annot_field_label(ctx, widget);
+	fz_catch(ctx)
+		jni_rethrow(env, ctx);
+
+	return (*env)->NewStringUTF(env, text);
 }

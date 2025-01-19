@@ -1,8 +1,4 @@
 #include "jsi.h"
-#include "jscompile.h"
-#include "jsvalue.h"
-#include "jsrun.h"
-
 #include "regexp.h"
 
 static void jsG_freeenvironment(js_State *J, js_Environment *env)
@@ -42,10 +38,18 @@ static void jsG_freeobject(js_State *J, js_Object *obj)
 		js_free(J, obj->u.r.source);
 		js_regfreex(J->alloc, J->actx, obj->u.r.prog);
 	}
+	if (obj->type == JS_CSTRING) {
+		if (obj->u.s.string != obj->u.s.shrstr)
+			js_free(J, obj->u.s.string);
+	}
+	if (obj->type == JS_CARRAY && obj->u.a.simple)
+		js_free(J, obj->u.a.array);
 	if (obj->type == JS_CITERATOR)
 		jsG_freeiterator(J, obj->u.iter.head);
 	if (obj->type == JS_CUSERDATA && obj->u.user.finalize)
 		obj->u.user.finalize(J, obj->u.user.data);
+	if (obj->type == JS_CCFUNCTION && obj->u.c.finalize)
+		obj->u.c.finalize(J, obj->u.c.data);
 	js_free(J, obj);
 }
 
@@ -81,9 +85,9 @@ static void jsG_markproperty(js_State *J, int mark, js_Property *node)
 	if (node->left->level) jsG_markproperty(J, mark, node->left);
 	if (node->right->level) jsG_markproperty(J, mark, node->right);
 
-	if (node->value.type == JS_TMEMSTR && node->value.u.memstr->gcmark != mark)
+	if (node->value.t.type == JS_TMEMSTR && node->value.u.memstr->gcmark != mark)
 		node->value.u.memstr->gcmark = mark;
-	if (node->value.type == JS_TOBJECT && node->value.u.object->gcmark != mark)
+	if (node->value.t.type == JS_TOBJECT && node->value.u.object->gcmark != mark)
 		jsG_markobject(J, mark, node->value.u.object);
 	if (node->getter && node->getter->gcmark != mark)
 		jsG_markobject(J, mark, node->getter);
@@ -98,6 +102,16 @@ static void jsG_scanobject(js_State *J, int mark, js_Object *obj)
 		jsG_markproperty(J, mark, obj->properties);
 	if (obj->prototype && obj->prototype->gcmark != mark)
 		jsG_markobject(J, mark, obj->prototype);
+	if (obj->type == JS_CARRAY && obj->u.a.simple) {
+		int i;
+		for (i = 0; i < obj->u.a.flat_length; ++i) {
+			js_Value *v = &obj->u.a.array[i];
+			if (v->t.type == JS_TMEMSTR && v->u.memstr->gcmark != mark)
+				v->u.memstr->gcmark = mark;
+			if (v->t.type == JS_TOBJECT && v->u.object->gcmark != mark)
+				jsG_markobject(J, mark, v->u.object);
+		}
+	}
 	if (obj->type == JS_CITERATOR && obj->u.iter.target->gcmark != mark) {
 		jsG_markobject(J, mark, obj->u.iter.target);
 	}
@@ -114,9 +128,9 @@ static void jsG_markstack(js_State *J, int mark)
 	js_Value *v = J->stack;
 	int n = J->top;
 	while (n--) {
-		if (v->type == JS_TMEMSTR && v->u.memstr->gcmark != mark)
+		if (v->t.type == JS_TMEMSTR && v->u.memstr->gcmark != mark)
 			v->u.memstr->gcmark = mark;
-		if (v->type == JS_TOBJECT && v->u.object->gcmark != mark)
+		if (v->t.type == JS_TOBJECT && v->u.object->gcmark != mark)
 			jsG_markobject(J, mark, v->u.object);
 		++v;
 	}

@@ -1,7 +1,7 @@
 //---------------------------------------------------------------------------------
 //
 //  Little Color Management System
-//  Copyright (c) 1998-2020 Marti Maria Saguer
+//  Copyright (c) 1998-2022 Marti Maria Saguer
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the "Software"),
@@ -1524,10 +1524,10 @@ void* DupMatShaper(cmsContext ContextID, const void* Data)
 }
 
 
-// A fast matrix-shaper evaluator for 8 bits. This is a bit ticky since I'm using 1.14 signed fixed point
+// A fast matrix-shaper evaluator for 8 bits. This is a bit tricky since I'm using 1.14 signed fixed point
 // to accomplish some performance. Actually it takes 256x3 16 bits tables and 16385 x 3 tables of 8 bits,
 // in total about 50K, and the performance boost is huge!
-static
+static CMS_NO_SANITIZE
 void MatShaperEval16(cmsContext ContextID,
                      CMSREGISTER const cmsUInt16Number In[],
                      CMSREGISTER cmsUInt16Number Out[],
@@ -1681,6 +1681,10 @@ cmsBool OptimizeMatrixShaper(cmsContext ContextID, cmsPipeline** Lut, cmsUInt32N
 
        // Only works on 8 bit input
        if (!_cmsFormatterIs8bit(*InputFormat)) return FALSE;
+
+       // Does not work in the presence of premultiplied alpha, as that causes the values
+       // passed in to not actually be '8 bit' in the way that we rely on.
+       if (*dwFlags & cmsFLAGS_PREMULT) return FALSE;
 
        // Seems suitable, proceed
        Src = *Lut;

@@ -27,8 +27,8 @@ libdjvu         master     2020-12-06
   https://djvu.sourceforge.net/
   https://github.com/barak/djvulibre
 
-libwebp         1.2.0   2021-01-29
-  https://github.com/webmproject/libwebp/commit/78881b769c55ae8edb945338a26cd4bf50b5ab8b
+libwebp         1.4.0   2024-04-12
+  https://github.com/webmproject/libwebp/releases/tag/v1.4.0
 
 lzma            9.22b      2011-04-19
   https://www.7-zip.org/sdk.html
@@ -52,22 +52,28 @@ openjpeg        2.3.1      2020-02-07
 synctex         1.16       2011-06-14
   https://itexmac.sourceforge.net/SyncTeX.html
 
-UnRAR           5.9.3
+UnRAR           6.21.0     2023-02-16
   https://www.rarlab.com/rar_add.htm
 
 unarr           trunk
   https://github.com/zeniko/unarr
 
-zlib            1.2.11     2017-01-15   
+zlib            1.2.12
   https://www.zlib.net/
-  https://git.ghostscript.com/?p=thirdparty-zlib.git;a=commit;h=dea93d29387877a582fb57139378af312acd5400)
+  https://git.ghostscript.com/?p=thirdparty-zlib.git;a=commit;h=801678bd53548d3ffa269443fa0e98c538ce11f5)
 
-zlib-ng         trunk      2021-07-23
+zlib-ng         2.0.6      2021-12-24
   https://github.com/zlib-ng/zlib-ng
-  https://github.com/zlib-ng/zlib-ng/commit/12a975ac9f19b3d2e362d0d783ea20400335d1c6
+  https://github.com/zlib-ng/zlib-ng/tree/2.0.x
 
 extract         trunk
   https://github.com/ArtifexSoftware/extract
 
 windrawlib      trunk
   https://github.com/mity/windrawlib
+
+dav1d           trunk      2022-05-28
+  https://code.videolan.org/videolan/dav1d
+
+libheif         trunk      2022-05-30
+  https://github.com/strukturag/libheif

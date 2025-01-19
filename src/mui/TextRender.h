@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 enum class TextRenderMethod {
@@ -39,7 +39,7 @@ class ITextRender {
     virtual ~ITextRender() = default;
     ;
 
-    TextRenderMethod method;
+    TextRenderMethod method = TextRenderMethod::Hdc;
 };
 
 class TextRenderGdi : public ITextRender {
@@ -96,14 +96,13 @@ class TextRenderGdi : public ITextRender {
 
 class TextRenderGdiplus : public ITextRender {
   private:
-    TextMeasureAlgorithm measureAlgo;
+    TextMeasureAlgorithm measureAlgo = nullptr;
 
     // We don't own gfx and currFont
     Gdiplus::Graphics* gfx = nullptr;
     CachedFont* currFont = nullptr;
     Gdiplus::Color textColor{};
     Gdiplus::Brush* textColorBrush = nullptr;
-    WCHAR txtConvBuf[512]{};
 
     TextRenderGdiplus() = default;
 
@@ -112,7 +111,7 @@ class TextRenderGdiplus : public ITextRender {
 
     void SetFont(CachedFont* font) override;
     void SetTextColor(Gdiplus::Color col) override;
-    void SetTextBgColor(__unused Gdiplus::Color col) override {
+    void SetTextBgColor(Gdiplus::Color) override {
     }
 
     float GetCurrFontLineSpacing() override;
@@ -145,7 +144,6 @@ class TextRenderHdc : public ITextRender {
     CachedFont* currFont = nullptr;
     Gdiplus::Color textColor{};
     Gdiplus::Color textBgColor{};
-    WCHAR txtConvBuf[512]{};
 
     TextRenderHdc() = default;
 

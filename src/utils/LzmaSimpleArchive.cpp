@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 #include "BaseUtil.h"
@@ -266,7 +266,7 @@ static bool ExtractFileByIdx(SimpleArchive* archive, int idx, const char* dstDir
     }
 
     bool ok = false;
-    char* filePath = path::Join(dstDir, fi->name, allocator);
+    char* filePath = path::Join(allocator, dstDir, fi->name);
     if (filePath) {
         ByteSlice d = {(u8*)uncompressed, fi->uncompressedSize};
         ok = file::WriteFile(filePath, d);

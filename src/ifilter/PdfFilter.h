@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
 constexpr const char* kPdfFilterStateStrs = "start\0author\0title\0data\0content\0end\0";
@@ -19,11 +19,11 @@ public:
 
     // IPersist
     IFACEMETHODIMP GetClassID(CLSID *pClassID) {
-        return CLSIDFromString(SZ_PDF_FILTER_HANDLER, pClassID);
+        return CLSIDFromString(kPdfFilterHandler, pClassID);
     }
 
 private:
     PdfFilterState m_state{PdfFilterState::End};
-    int m_iPageNo{-1};
-    EngineBase *m_pdfEngine{nullptr};
+    int m_iPageNo = -1;
+    EngineBase *m_pdfEngine = nullptr;
 };

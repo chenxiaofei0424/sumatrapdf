@@ -1,11 +1,29 @@
+// Copyright (C) 2004-2024 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 39 Mesa Street, Suite 108A, San Francisco,
+// CA 94129, USA, for further information.
+
 #include "gl-app.h"
 
 #include <string.h>
 #include <stdio.h>
-
-#ifndef PATH_MAX
-#define PATH_MAX 4096
-#endif
 
 #include "mupdf/helpers/pkcs7-openssl.h"
 
@@ -61,7 +79,7 @@ int do_sign(void)
 		trace_action("'showLogo':%s}, ", logo ? "true" : "false");
 
 		if (strlen(sign_image_filename) > 0)
-			trace_action("new Image(null, %q), ", sign_image_filename);
+			trace_action("new Image(%q, null), ", sign_image_filename);
 		else
 			trace_action("null, ");
 
@@ -88,6 +106,7 @@ int do_sign(void)
 	fz_catch(ctx)
 	{
 		ui_show_warning_dialog("%s", fz_caught_message(ctx));
+		fz_report_error(ctx);
 		ok = 0;
 	}
 	return ok;
@@ -102,7 +121,10 @@ static void do_clear_signature(void)
 		ui_show_warning_dialog("Signature cleared successfully.");
 	}
 	fz_catch(ctx)
+	{
 		ui_show_warning_dialog("%s", fz_caught_message(ctx));
+		fz_report_error(ctx);
+	}
 }
 
 static int image_file_filter(const char *fn)
@@ -127,6 +149,7 @@ static void signature_select_image_dialog(void)
 			fz_catch(ctx)
 			{
 				ui_show_warning_dialog("%s", fz_caught_message(ctx));
+				fz_report_error(ctx);
 				ui.dialog = signature_select_image_dialog;
 			}
 		}
@@ -349,6 +372,7 @@ static void cert_password_dialog(void)
 					ui.dialog = signature_appearance_dialog;
 				} else {
 					ui_show_warning_dialog("%s", fz_caught_message(ctx));
+					fz_report_error(ctx);
 				}
 			}
 		}
@@ -509,7 +533,10 @@ static void show_sig_dialog(pdf_annot *widget)
 		}
 	}
 	fz_catch(ctx)
+	{
 		ui_show_warning_dialog("%s", fz_caught_message(ctx));
+		fz_report_error(ctx);
+	}
 }
 
 static pdf_annot *tx_widget;
@@ -539,10 +566,12 @@ static void tx_dialog(void)
 			ui_spacer();
 			if (ui_button("Okay") || is == UI_INPUT_ACCEPT)
 			{
-				trace_action("widget.setTextValue(%q);\n", tx_input.text);
-				pdf_set_text_field_value(ctx, tx_widget, tx_input.text);
-				trace_field_value(tx_widget, tx_input.text);
-				ui.dialog = NULL;
+				if (pdf_set_text_field_value(ctx, tx_widget, tx_input.text))
+				{
+					trace_action("widget.setTextValue(%q);\n", tx_input.text);
+					trace_field_value(tx_widget, tx_input.text);
+					ui.dialog = NULL;
+				}
 			}
 		}
 		ui_panel_end();

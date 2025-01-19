@@ -1,8 +1,8 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 struct ScopedCritSec {
-    CRITICAL_SECTION* cs{nullptr};
+    CRITICAL_SECTION* cs = nullptr;
 
     explicit ScopedCritSec(CRITICAL_SECTION* cs) : cs(cs) {
         EnterCriticalSection(cs);
@@ -13,13 +13,12 @@ struct ScopedCritSec {
 };
 
 class AutoCloseHandle {
-    HANDLE handle{nullptr};
+    HANDLE handle = nullptr;
 
   public:
     AutoCloseHandle() = default;
 
-    AutoCloseHandle(HANDLE h) { // NOLINT
-        handle = h;
+    AutoCloseHandle(HANDLE h) : handle(h) {
     }
 
     ~AutoCloseHandle() {
@@ -29,17 +28,17 @@ class AutoCloseHandle {
     }
 
     AutoCloseHandle& operator=(HANDLE h) {
-        CrashIf(handle != nullptr);
-        CrashIf(h == nullptr);
+        ReportIf(handle != nullptr);
+        ReportIf(h == nullptr);
         handle = h;
         return *this;
     }
 
-    [[nodiscard]] operator HANDLE() const { // NOLINT
+    operator HANDLE() const { // NOLINT
         return handle;
     }
 
-    [[nodiscard]] bool IsValid() const {
+    bool IsValid() const {
         return handle != nullptr && handle != INVALID_HANDLE_VALUE;
     }
 };
@@ -47,7 +46,7 @@ class AutoCloseHandle {
 template <class T>
 class ScopedComPtr {
   protected:
-    T* ptr{nullptr};
+    T* ptr = nullptr;
 
   public:
     ScopedComPtr() = default;
@@ -60,17 +59,17 @@ class ScopedComPtr {
         }
     }
     bool Create(const CLSID clsid) {
-        CrashIf(ptr);
+        ReportIf(ptr);
         if (ptr) {
             return false;
         }
         HRESULT hr = CoCreateInstance(clsid, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&ptr));
         return SUCCEEDED(hr);
     }
-    [[nodiscard]] T* Get() const {
+    T* Get() const {
         return ptr;
     }
-    [[nodiscard]] operator T*() const { // NOLINT
+    operator T*() const { // NOLINT
         return ptr;
     }
     T** operator&() {
@@ -91,7 +90,7 @@ class ScopedComPtr {
 template <class T>
 class ScopedComQIPtr {
   protected:
-    T* ptr{nullptr};
+    T* ptr = nullptr;
 
   public:
     ScopedComQIPtr() = default;
@@ -108,7 +107,7 @@ class ScopedComQIPtr {
         }
     }
     bool Create(const CLSID clsid) {
-        CrashIf(ptr);
+        ReportIf(ptr);
         if (ptr)
             return false;
         HRESULT hr = CoCreateInstance(clsid, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&ptr));
@@ -122,7 +121,7 @@ class ScopedComQIPtr {
             ptr = nullptr;
         return ptr;
     }
-    [[nodiscard]] operator T*() const { // NOLINT
+    operator T*() const { // NOLINT
         return ptr;
     }
     T** operator&() {
@@ -138,17 +137,35 @@ class ScopedComQIPtr {
     }
 };
 
-class AutoDeleteDC {
-    HDC hdc{nullptr};
+struct AutoDeleteDC {
+    HDC hdc = nullptr;
 
-  public:
     explicit AutoDeleteDC(HDC hdc) {
         this->hdc = hdc;
     }
+    AutoDeleteDC() = default;
+
     ~AutoDeleteDC() {
         DeleteDC(hdc);
     }
-    [[nodiscard]] operator HDC() const { // NOLINT
+    operator HDC() const { // NOLINT
+        return hdc;
+    }
+};
+
+struct AutoReleaseDC {
+    HWND hwnd = nullptr;
+    HDC hdc = nullptr;
+
+    explicit AutoReleaseDC(HWND hwnd) {
+        hdc = GetWindowDC(hwnd);
+    }
+    AutoReleaseDC() = default;
+
+    ~AutoReleaseDC() {
+        ReleaseDC(hwnd, hdc);
+    }
+    operator HDC() const { // NOLINT
         return hdc;
     }
 };
@@ -164,17 +181,16 @@ class ScopedGdiObj {
     ~ScopedGdiObj() {
         DeleteObject(obj);
     }
-    [[nodiscard]] operator T() const { // NOLINT
+    operator T() const { // NOLINT
         return obj;
     }
 };
-using AutoDeleteFont = ScopedGdiObj<HFONT>;
 using AutoDeletePen = ScopedGdiObj<HPEN>;
 using AutoDeleteBrush = ScopedGdiObj<HBRUSH>;
 
 class ScopedGetDC {
-    HDC hdc{nullptr};
-    HWND hwnd{nullptr};
+    HDC hdc = nullptr;
+    HWND hwnd = nullptr;
 
   public:
     explicit ScopedGetDC(HWND hwnd) {
@@ -184,43 +200,57 @@ class ScopedGetDC {
     ~ScopedGetDC() {
         ReleaseDC(hwnd, hdc);
     }
-    [[nodiscard]] operator HDC() const { // NOLINT
+    operator HDC() const { // NOLINT
         return hdc;
     }
 };
 
 class ScopedSelectObject {
-    HDC hdc{nullptr};
-    HGDIOBJ prev{nullptr};
+    HDC hdc = nullptr;
+    HGDIOBJ obj = nullptr;
+    HGDIOBJ prev = nullptr;
 
   public:
-    ScopedSelectObject(HDC hdc, HGDIOBJ obj) : hdc(hdc) {
-        prev = SelectObject(hdc, obj);
+    ScopedSelectObject(HDC hdc, HGDIOBJ obj, bool alsoDelete = false) {
+        this->hdc = hdc;
+        this->prev = SelectObject(hdc, obj);
+        if (alsoDelete) {
+            this->obj = obj;
+        }
     }
+
     ~ScopedSelectObject() {
         SelectObject(hdc, prev);
+        if (obj) {
+            DeleteObject(obj);
+        }
     }
 };
 
 class ScopedSelectFont {
-    HDC hdc{nullptr};
-    HFONT prevFont{nullptr};
+    HDC hdc = nullptr;
+    HGDIOBJ prev = nullptr;
 
   public:
+    // font can be nullptr
     explicit ScopedSelectFont(HDC hdc, HFONT font) {
-        prevFont = (HFONT)SelectObject(hdc, font);
+        this->hdc = hdc;
+        if (font) {
+            prev = (HFONT)SelectObject(hdc, font);
+        }
     }
 
     ~ScopedSelectFont() {
-        SelectObject(hdc, prevFont);
+        if (prev) {
+            SelectObject(hdc, prev);
+        }
     }
 };
 
-class ScopedSelectPen {
-    HDC hdc{nullptr};
-    HPEN prevPen{nullptr};
+struct ScopedSelectPen {
+    HDC hdc = nullptr;
+    HPEN prevPen = nullptr;
 
-  public:
     explicit ScopedSelectPen(HDC hdc, HPEN pen) {
         prevPen = (HPEN)SelectObject(hdc, pen);
     }
@@ -231,8 +261,8 @@ class ScopedSelectPen {
 };
 
 class ScopedSelectBrush {
-    HDC hdc{nullptr};
-    HBRUSH prevBrush{nullptr};
+    HDC hdc = nullptr;
+    HBRUSH prevBrush = nullptr;
 
   public:
     explicit ScopedSelectBrush(HDC hdc, HBRUSH pen) {
@@ -267,9 +297,9 @@ class ScopedGdiPlus {
   protected:
     Gdiplus::GdiplusStartupInput si{};
     Gdiplus::GdiplusStartupOutput so{};
-    ULONG_PTR token{0};
-    ULONG_PTR hookToken{0};
-    bool noBgThread{false};
+    ULONG_PTR token = 0;
+    ULONG_PTR hookToken = 0;
+    bool noBgThread = false;
 
   public:
     // suppress the GDI+ background thread when initiating in WinMain,

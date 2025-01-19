@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
@@ -8,12 +8,12 @@
 #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
 
-#include "wingui/TreeModel.h"
-#include "DisplayMode.h"
-#include "Controller.h"
+#include "wingui/UIModels.h"
+
+#include "Settings.h"
+#include "DocController.h"
 #include "EngineBase.h"
-#include "SettingsStructs.h"
-#include "EngineCreate.h"
+#include "EngineAll.h"
 #include "DisplayModel.h"
 #include "utils/FileUtil.h"
 #include "uia/DocumentProvider.h"
@@ -92,18 +92,18 @@ bool SumatraUIAutomationDocumentProvider::IsDocumentLoaded() const {
 }
 
 DisplayModel* SumatraUIAutomationDocumentProvider::GetDM() {
-    CrashIf(!IsDocumentLoaded());
-    CrashIf(!dm);
+    ReportIf(!IsDocumentLoaded());
+    ReportIf(!dm);
     return dm;
 }
 
 SumatraUIAutomationPageProvider* SumatraUIAutomationDocumentProvider::GetFirstPage() {
-    CrashIf(!IsDocumentLoaded());
+    ReportIf(!IsDocumentLoaded());
     return child_first;
 }
 
 SumatraUIAutomationPageProvider* SumatraUIAutomationDocumentProvider::GetLastPage() {
-    CrashIf(!IsDocumentLoaded());
+    ReportIf(!IsDocumentLoaded());
     return child_last;
 }
 
@@ -122,7 +122,7 @@ ULONG STDMETHODCALLTYPE SumatraUIAutomationDocumentProvider::AddRef() {
 
 ULONG STDMETHODCALLTYPE SumatraUIAutomationDocumentProvider::Release() {
     LONG res = InterlockedDecrement(&refCount);
-    CrashIf(res < 0);
+    ReportIf(res < 0);
     if (0 == res) {
         delete this;
     }
@@ -175,7 +175,7 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationDocumentProvider::GetRuntimeId(SAFE
     LONG rId[] = {(LONG)canvasHwnd, SUMATRA_UIA_DOCUMENT_RUNTIME_ID};
     for (LONG i = 0; i < 2; i++) {
         HRESULT hr = SafeArrayPutElement(psa, &i, (void*)&(rId[i]));
-        CrashIf(FAILED(hr));
+        ReportIf(FAILED(hr));
     }
 
     *pRetVal = psa;
@@ -241,7 +241,8 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationDocumentProvider::GetPropertyValue(
     if (propertyId == UIA_NamePropertyId) {
         // typically filename
         pRetVal->vt = VT_BSTR;
-        pRetVal->bstrVal = SysAllocString(path::GetBaseNameTemp(dm->GetEngine()->FileName()));
+        TempStr s = path::GetBaseNameTemp(dm->GetEngine()->FilePath());
+        pRetVal->bstrVal = SysAllocString(ToWStrTemp(s));
         return S_OK;
     } else if (propertyId == UIA_IsTextPatternAvailablePropertyId) {
         pRetVal->vt = VT_BOOL;
@@ -304,7 +305,7 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationDocumentProvider::GetSelection(SAFE
 
     LONG index = 0;
     HRESULT hr = SafeArrayPutElement(psa, &index, selection);
-    CrashIf(FAILED(hr));
+    ReportIf(FAILED(hr));
     // the array now owns the selection
     selection->Release();
 
@@ -330,7 +331,7 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationDocumentProvider::GetVisibleRanges(
         }
         it = it->sibling_next;
     }
-    CrashIf(ULONG_MAX == rangeArray.size());
+    ReportIf(ULONG_MAX == rangeArray.size());
 
     SAFEARRAY* psa = SafeArrayCreateVector(VT_UNKNOWN, 0, (ULONG)rangeArray.size());
     if (!psa) {
@@ -342,7 +343,7 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationDocumentProvider::GetVisibleRanges(
 
     for (LONG i = 0; i < (LONG)rangeArray.size(); i++) {
         HRESULT hr = SafeArrayPutElement(psa, &i, rangeArray[i]);
-        CrashIf(FAILED(hr));
+        ReportIf(FAILED(hr));
         rangeArray[i]->Release();
     }
 

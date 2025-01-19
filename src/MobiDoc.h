@@ -1,11 +1,11 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 class HuffDicDecompressor;
 class PdbReader;
 
-class MobiDoc {
-    WCHAR* fileName = nullptr;
+struct MobiDoc {
+    char* fileName = nullptr;
 
     PdbReader* pdbReader = nullptr;
 
@@ -25,19 +25,15 @@ class MobiDoc {
 
     HuffDicDecompressor* huffDic = nullptr;
 
-    struct Metadata {
-        DocumentProperty prop;
-        char* value;
-    };
-    Vec<Metadata> props;
+    Props props;
 
-    explicit MobiDoc(const WCHAR* filePath);
+    explicit MobiDoc(const char* filePath);
 
     bool ParseHeader();
     bool LoadDocRecordIntoBuffer(size_t recNo, str::Str& strOut);
     void LoadImages();
     bool LoadImage(size_t imageNo);
-    bool LoadDocument(PdbReader* pdbReader);
+    bool LoadForPdbReader(PdbReader* pdbReader);
     bool DecodeExthHeader(const u8* data, size_t dataLen);
 
   public:
@@ -47,14 +43,14 @@ class MobiDoc {
 
     ~MobiDoc();
 
-    [[nodiscard]] ByteSlice GetHtmlData() const;
+    ByteSlice GetHtmlData() const;
     ByteSlice* GetCoverImage();
-    [[nodiscard]] ByteSlice* GetImage(size_t imgRecIndex) const;
-    [[nodiscard]] const WCHAR* GetFileName() const {
+    ByteSlice* GetImage(size_t imgRecIndex) const;
+    const char* GetFileName() const {
         return fileName;
     }
-    WCHAR* GetProperty(DocumentProperty prop);
-    [[nodiscard]] PdbDocType GetDocType() const {
+    TempStr GetPropertyTemp(const char* name);
+    PdbDocType GetDocType() const {
         return docType;
     }
 
@@ -62,6 +58,6 @@ class MobiDoc {
     bool ParseToc(EbookTocVisitor* visitor);
 
     static bool IsSupportedFileType(Kind);
-    static MobiDoc* CreateFromFile(const WCHAR* fileName);
+    static MobiDoc* CreateFromFile(const char* fileName);
     static MobiDoc* CreateFromStream(IStream* stream);
 };

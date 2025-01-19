@@ -8,8 +8,8 @@ Notes:
     When building an sdist (e.g. with 'pip sdist'), we use clang-python to
     generate C++ source which is then included in the sdist.
 
-    Thus when we are in an sdist and are installing or building a wheel, we
-    don't need clang-python .
+    This allows wheels to be built from an sdist without requiring clang-python
+    to be installed.
 
 
 Internal testing only - environmental variables:
@@ -38,7 +38,6 @@ import platform
 import re
 import subprocess
 import sys
-import sys
 import time
 
 
@@ -66,6 +65,20 @@ def root_dir():
 def windows():
     s = platform.system()
     return s == 'Windows' or s.startswith('CYGWIN')
+
+@cache
+def macos():
+    s = platform.system()
+    return s == 'Darwin'
+
+@cache
+def openbsd():
+    s = platform.system()
+    return s == 'OpenBSD'
+
+@cache
+def msys2():
+    return platform.system().startswith('MSYS_NT-')
 
 @cache
 def build_dir():
@@ -105,6 +118,20 @@ def mupdf_version():
     time to the base version in include/mupdf/fitz/version.h. For example
     '1.18.0.20210330.1800'.
     '''
+    return mupdf_version_internal()
+
+
+def mupdf_version_internal(t_tuple=None):
+    '''
+    Return version number, with doctest check for broken behaviour with leading
+    zeros.
+
+    >>> t0str = '2024-06-06-00:00'
+    >>> t0tuple = time.strptime(t0str, '%Y-%m-%d-%H:%M')
+    >>> v = mupdf_version_internal(t0tuple)
+    >>> print(v, file=sys.stderr)
+    >>> assert v.endswith('.202406060000')
+    '''
     with open(f'{root_dir()}/include/mupdf/fitz/version.h') as f:
         text = f.read()
     m = re.search('\n#define FZ_VERSION "([^"]+)"\n', text)
@@ -137,8 +164,16 @@ def mupdf_version():
     #
     # This also allows us to easily experiment on test.pypi.org.
     #
-    ret = base_version + time.strftime(".%Y%m%d.%H%M")
+    # We have to avoid the time component(s) containing `.0` as this is
+    # prohibited by PEP-440.
+    #
+    if t_tuple is None:
+        t_tuple = time.localtime()
+    tt = time.strftime(".%Y%m%d%H%M", t_tuple)
+    tail = tt.replace('.0', '.')
+    ret = base_version + tail
     #log(f'Have created version number: {ret}')
+    pipcl._assert_version_pep_440(ret)
     return ret
 
 
@@ -157,7 +192,6 @@ def git_info():
         return text
     current = get_id('git show --pretty=oneline')
     origin = get_id('git show --pretty=oneline origin')
-    command = ''
     diff = subprocess.check_output(f'cd {root_dir()} && git diff', shell=True).decode('utf8')
     return current, origin, diff
 
@@ -189,8 +223,10 @@ def get_flag(name, default):
 
 def sdist():
     '''
-    pipcl callback. If we are a git checkout, return all files known to
-    git. Otherwise return all files except for those in build/.
+    pipcl callback. We run './scripts/mupdfwrap.py -b 0' to create C++ files
+    etc using clang-python, and return these generated files plus all files
+    known to git. [This allows sdists to be used to generate wheels etc on
+    machines without clang-python.]
     '''
     assert os.path.exists(f'{root_dir()}/.git'), f'Cannot make sdist because not a git checkout: {root_dir()}'
 
@@ -207,6 +243,23 @@ def sdist():
 
     paths = pipcl.git_items( root_dir(), submodules=True)
 
+    # Strip out some large test directories.
+    i = 0
+    while i < len( paths):
+        path = paths[i]
+        remove = False
+        if (0
+                or path.startswith( 'thirdparty/harfbuzz/test/')
+                or path.startswith( 'thirdparty/tesseract/test/')
+                or path.startswith( 'thirdparty/extract/test/')
+                ):
+            remove = True
+        if remove:
+            #log( f'Excluding: {path}')
+            del paths[i]
+        else:
+            i += 1
+
     # Build C++ files and SWIG C code for inclusion in sdist, so that it can be
     # used on systems without clang-python or SWIG.
     #
@@ -217,37 +270,34 @@ def sdist():
         b += '0'
     if use_swig:
         b += '2'
-    extra = ' --swig-windows-auto' if windows() else ''
     command = '' if os.getcwd() == root_dir() else f'cd {os.path.relpath(root_dir())} && '
-    command += f'{sys.executable} ./scripts/mupdfwrap.py{extra} -d {build_dir()} -b "{b}"'
+    command += f'{sys.executable} ./scripts/mupdfwrap.py -d {build_dir()} -b "{b}"'
     log(f'Running: {command}')
     subprocess.check_call(command, shell=True)
     paths += [
             'build/shared-release/mupdf.py',
             'git-info',
-            'platform/c++/c_functions.pickle',
-            'platform/c++/c_globals.pickle',
-            'platform/c++/container_classnames.pickle',
+            'platform/c++/generated.pickle',
             'platform/c++/implementation/classes.cpp',
+            'platform/c++/implementation/classes2.cpp',
             'platform/c++/implementation/exceptions.cpp',
             'platform/c++/implementation/functions.cpp',
             'platform/c++/implementation/internal.cpp',
             'platform/c++/include/mupdf/classes.h',
+            'platform/c++/include/mupdf/classes2.h',
             'platform/c++/include/mupdf/exceptions.h',
             'platform/c++/include/mupdf/functions.h',
             'platform/c++/include/mupdf/internal.h',
-            'platform/c++/swig_c.pickle',
-            'platform/c++/swig_python.pickle',
-            'platform/c++/to_string_structnames.pickle',
             'platform/c++/windows_mupdf.def',
-            'platform/python/mupdfcpp_swig.cpp',
+            'platform/python/mupdfcpp_swig.i.cpp',
             ]
     return paths
 
 
 def build():
     '''
-    pipcl callback. Build MuPDF C, C++ and Python libraries.
+    pipcl callback. Build MuPDF C, C++ and Python libraries and return list of
+    created files.
     '''
     # If we are an sdist, default to not trying to run clang-python - the
     # generated files will already exist, and installing/using clang-python
@@ -269,7 +319,6 @@ def build():
     command = '' if root_dir() == os.getcwd() else f'cd {os.path.relpath(root_dir())} && '
     command += (
             f'"{sys.executable}" ./scripts/mupdfwrap.py'
-            f'{" --swig-windows-auto" if windows() else ""}'
             f' -d {build_dir()}'
             f' -b {b}'
             )
@@ -287,20 +336,30 @@ def build():
     if windows():
         infix = '' if sys.maxsize == 2**31 - 1 else '64'
         names = [
-                f'mupdfcpp{infix}.dll', # C and C++.
-                '_mupdf.pyd',           # Python internals.
-                'mupdf.py',             # Python.
+                f'{build_dir()}/mupdfcpp{infix}.dll',   # C and C++.
+                f'{build_dir()}/_mupdf.pyd',            # Python internals.
+                f'{build_dir()}/mupdf.py',              # Python.
+                ]
+    elif macos():
+        log( f'Contents of {build_dir()} are:')
+        for leaf in os.listdir(build_dir()):
+            log( f'    {leaf}')
+        names = [
+                f'{build_dir()}/libmupdf.dylib',    # C.
+                f'{build_dir()}/libmupdfcpp.so',    # C++.
+                f'{build_dir()}/_mupdf.so',         # Python internals.
+                f'{build_dir()}/mupdf.py',          # Python.
                 ]
     else:
         names = [
-                'libmupdf.so',      # C.
-                'libmupdfcpp.so',   # C++.
-                '_mupdf.so',        # Python internals.
-                'mupdf.py',         # Python.
+                pipcl.get_soname(f'{build_dir()}/libmupdf.so'),     # C.
+                pipcl.get_soname(f'{build_dir()}/libmupdfcpp.so'),  # C++.
+                f'{build_dir()}/_mupdf.so',                         # Python internals.
+                f'{build_dir()}/mupdf.py',                          # Python.
                 ]
     paths = []
     for name in names:
-        paths.append((f'{build_dir()}/{name}', name))
+        paths.append((name, ''))
 
     log(f'build(): returning: {paths}')
     return paths
@@ -338,6 +397,7 @@ Summary
 * MuPDF's ``setjmp``/``longjmp`` exceptions are converted to Python exceptions.
 * Functions and methods do not take ``fz_context`` arguments. (Automatically-generated per-thread contexts are used internally.)
 * Wrapper classes automatically handle reference counting of the underlying structs (with internal calls to ``fz_keep_*()`` and ``fz_drop_*()``).
+* Support for MuPDF function pointers with SWIG Director classes, allowing MuPDF to call Python callbacks.
 * Provides a small number of extensions beyond the basic C API:
 
   * Some generated classes have extra support for iteration.
@@ -414,9 +474,12 @@ Here is some example code that shows all available information about document's 
 More information
 ----------------
 
-https://twiki.ghostscript.com/do/view/Main/MuPDFWrap
+https://mupdf.com/r/C-and-Python-APIs
 
 """
+
+with open(f'{root_dir()}/COPYING') as f:
+    license = f.read()
 
 mupdf_package = pipcl.Package(
         name = 'mupdf',
@@ -424,7 +487,7 @@ mupdf_package = pipcl.Package(
         root = root_dir(),
         summary = 'Python bindings for MuPDF library.',
         description = description,
-        classifiers = [
+        classifier = [
                 'Development Status :: 4 - Beta',
                 'Intended Audience :: Developers',
                 'License :: OSI Approved :: GNU Affero General Public License v3',
@@ -432,13 +495,15 @@ mupdf_package = pipcl.Package(
                 ],
         author = 'Artifex Software, Inc.',
         author_email = 'support@artifex.com',
-        url_docs = 'https://twiki.ghostscript.com/do/view/Main/MuPDFWrap/',
-        url_home = 'https://mupdf.com/',
-        url_source = 'https://git.ghostscript.com/?p=mupdf.git',
-        url_tracker = 'https://bugs.ghostscript.com/',
+        home_page = 'https://mupdf.com/',
+        project_url = [
+            ('Documentation, https://mupdf.com/r/C-and-Python-APIs/'),
+            ('Source, https://git.ghostscript.com/?p=mupdf.git'),
+            ('Tracker, https://bugs.ghostscript.com/'),
+            ],
         keywords = 'PDF',
         platform = None,
-        license_files = ['COPYING'],
+        license = license,
         fn_build = build,
         fn_clean = clean,
         fn_sdist = sdist,
@@ -459,6 +524,36 @@ def build_sdist( sdist_directory, config_settings=None):
             sdist_directory,
             config_settings,
             )
+
+def get_requires_for_build_wheel(config_settings=None):
+    '''
+    Adds to pyproject.toml:[build-system]:requires, allowing programmatic
+    control over what packages we require.
+    '''
+    ret = list()
+    ret.append('setuptools')
+    if openbsd():
+        #print(f'OpenBSD: libclang not available via pip; assuming `pkg_add py3-llvm`.')
+        pass
+    elif macos() and platform.machine() == 'arm64':
+        #print(
+        #       f'MacOS/arm64: forcing use of libclang 16.0.6 because 17.0.6'
+        #       f' and 18.1.1 are known to fail with:'
+        #       f' `clang.cindex.TranslationUnitLoadError: Error parsing translation unit.`'
+        #       )
+        ret.append('libclang==16.0.6')
+    else:
+        ret.append('libclang')
+    if msys2():
+        #print(f'msys2: pip install of swig does not build; assuming `pacman -S swig`.')
+        pass
+    elif openbsd():
+        #print(f'OpenBSD: pip install of swig does not build; assuming `pkg_add swig`.')
+        pass
+    else:
+        ret.append( 'swig')
+    return ret
+
 
 # Allow us to be used as a pre-PIP-517 setup.py script.
 #

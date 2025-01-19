@@ -1,4 +1,4 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 #include "utils/BaseUtil.h"
@@ -12,10 +12,10 @@ It's a very fast bump allocator.
 
 You must periodically call ResetTempAllocator()
 to free memory used by allocator.
-A safe place to call it is inside message windows loop.
+A good place to do it is at the beginning of window message loop.
 */
 
-thread_local static PoolAllocator* gTempAllocator{nullptr};
+thread_local static PoolAllocator* gTempAllocator = nullptr;
 
 // forbid inlinining to not blow out the size of callers
 NO_INLINE Allocator* GetTempAllocator() {
@@ -42,66 +42,115 @@ void ResetTempAllocator() {
 
 namespace str {
 TempStr DupTemp(const char* s, size_t cb) {
-    char* res = str::Dup(GetTempAllocator(), s, cb);
-    if (cb == (size_t)-1) {
-        // TODO: optimize to remove str::Len(). Add version of str::Dup()
-        // that returns std::string_view
-        cb = str::Len(res);
-    }
-    return TempStr(res, cb);
-}
-TempStr DupTemp(std::string_view sv) {
-    return DupTemp(sv.data(), sv.size());
+    return str::Dup(GetTempAllocator(), s, cb);
 }
 
-TempWstr DupTemp(const WCHAR* s, size_t cch) {
-    WCHAR* res = str::Dup(GetTempAllocator(), s, cch);
-    if (cch == (size_t)-1) {
-        cch = str::Len(res);
-    }
-    return TempWstr(res, cch);
-}
-
-TempWstr DupTemp(std::wstring_view sv) {
-    return DupTemp(sv.data(), sv.size());
+TempWStr DupTemp(const WCHAR* s, size_t cch) {
+    return str::Dup(GetTempAllocator(), s, cch);
 }
 
 TempStr JoinTemp(const char* s1, const char* s2, const char* s3) {
-    char* s = Join(s1, s2, s3, GetTempAllocator());
-    return TempStr(s);
+    return Join(GetTempAllocator(), s1, s2, s3);
 }
 
-TempWstr JoinTemp(const WCHAR* s1, const WCHAR* s2, const WCHAR* s3) {
-    WCHAR* s = Join(s1, s2, s3, GetTempAllocator());
-    return TempWstr(s);
+TempStr JoinTemp(const char* s1, const char* s2, const char* s3, const char* s4) {
+    return Join(GetTempAllocator(), s1, s2, s3, s4, nullptr);
+}
+
+TempStr JoinTemp(const char* s1, const char* s2, const char* s3, const char* s4, const char* s5) {
+    return Join(GetTempAllocator(), s1, s2, s3, s4, s5);
+}
+
+TempWStr JoinTemp(const WCHAR* s1, const WCHAR* s2, const WCHAR* s3) {
+    return Join(GetTempAllocator(), s1, s2, s3);
+}
+
+TempStr FormatTemp(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    char* res = FmtVWithAllocator(GetTempAllocator(), fmt, args);
+    va_end(args);
+    return res;
+}
+
+TempStr ReplaceTemp(const char* s, const char* toReplace, const char* replaceWith) {
+    if (!s || str::IsEmpty(toReplace) || !replaceWith) {
+        return nullptr;
+    }
+
+    const char* curr = s;
+    const char* end = str::Find(curr, toReplace);
+    if (!end) {
+        // optimization: nothing to replace so do nothing
+        return (TempStr)s;
+    }
+
+    size_t findLen = str::Len(toReplace);
+    size_t replLen = str::Len(replaceWith);
+    size_t lenDiff = 0;
+    if (replLen > findLen) {
+        lenDiff = replLen - findLen;
+    }
+    // heuristic: allow 6 replacements without reallocating
+    size_t capHint = str::Len(s) + 1 + (lenDiff * 6);
+    str::Str result(capHint);
+    bool ok;
+    while (end != nullptr) {
+        ok = result.Append(curr, end - curr);
+        if (!ok) {
+            return nullptr;
+        }
+        ok = result.Append(replaceWith, replLen);
+        if (!ok) {
+            return nullptr;
+        }
+        curr = end + findLen;
+        end = str::Find(curr, toReplace);
+    }
+    ok = result.Append(curr);
+    if (!ok) {
+        return nullptr;
+    }
+    return result.StealData(GetTempAllocator());
+}
+
+TempStr ReplaceNoCaseTemp(const char* s, const char* toReplace, const char* replaceWith) {
+    int n = str::Leni(toReplace);
+    const char* pos = str::FindI(s, toReplace);
+    if (!pos) {
+        return (TempStr)s;
+    }
+    if (!memeq(pos, toReplace, n)) {
+        toReplace = (const char*)str::DupTemp(pos, n);
+    }
+    TempStr res = str::ReplaceTemp(s, toReplace, replaceWith);
+    return res;
 }
 
 } // namespace str
 
 TempStr ToUtf8Temp(const WCHAR* s, size_t cch) {
     if (!s) {
-        CrashIf((int)cch > 0);
-        return TempStr();
+        ReportIf((int)cch > 0);
+        return nullptr;
     }
-    auto v = strconv::WstrToUtf8V(s, cch, GetTempAllocator());
-    return TempStr{v.data(), v.size()};
+    return strconv::WStrToUtf8(s, cch, GetTempAllocator());
 }
 
-TempStr ToUtf8Temp(std::wstring_view sv) {
-    auto v = strconv::WstrToUtf8V(sv, GetTempAllocator());
-    return TempStr{v.data(), v.size()};
-}
-
-TempWstr ToWstrTemp(const char* s, size_t cb) {
+TempWStr ToWStrTemp(const char* s, size_t cb) {
     if (!s) {
-        CrashIf((int)cb > 0);
-        return TempWstr();
+        ReportIf((int)cb > 0);
+        return nullptr;
     }
-    auto v = strconv::Utf8ToWstrV(s, cb, GetTempAllocator());
-    return TempWstr{v.data(), v.size()};
+    return strconv::Utf8ToWStr(s, cb, GetTempAllocator());
 }
 
-TempWstr ToWstrTemp(std::string_view sv) {
-    auto v = strconv::Utf8ToWstrV(sv, GetTempAllocator());
-    return TempWstr{v.data(), v.size()};
+// handles embedded 0 in the string
+TempWStr ToWStrTemp(const str::Str& str) {
+    if (str.IsEmpty()) {
+        return nullptr;
+    }
+    char* s = str.CStr();
+    size_t cb = str.Size();
+    return strconv::Utf8ToWStr(s, cb, GetTempAllocator());
 }

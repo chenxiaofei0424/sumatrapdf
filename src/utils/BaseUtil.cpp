@@ -1,13 +1,71 @@
-/* Copyright 2021 the SumatraPDF project authors (see AUTHORS file).
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
 #include "utils/BaseUtil.h"
 #include "utils/ScopedWin.h"
 
+#include "utils/Log.h"
+
 Kind kindNone = "none";
 
 // if > 1 we won't crash when memory allocation fails
-std::atomic<int> gAllowAllocFailure = 0;
+LONG gAllowAllocFailure = 0;
+
+// returns previous value
+int AtomicInt::Set(int n) {
+    auto res = InterlockedExchange((LONG*)&val, n);
+    return (int)res;
+}
+
+// returns value after increment
+int AtomicInt::Inc() {
+    return (int)InterlockedIncrement(&val);
+}
+
+// returns value after decrement
+int AtomicInt::Dec() {
+    return (int)InterlockedDecrement(&val);
+}
+
+// returns value after adding
+int AtomicInt::Add(int n) {
+    return (int)InterlockedAdd(&val, n);
+}
+
+// returns value after subtracting
+int AtomicInt::Sub(int n) {
+    return (int)InterlockedAdd(&val, -n);
+}
+
+int AtomicInt::Get() const {
+    return (int)InterlockedCompareExchange((LONG*)&val, 0, 0);
+}
+
+bool AtomicBool::Get() const {
+    return InterlockedCompareExchange((LONG*)&val, 0, 0) != 0;
+}
+
+// returns previous value
+bool AtomicBool::Set(bool newValue) {
+    auto res = InterlockedExchange((LONG*)&val, newValue ? 1 : 0);
+    return res != 0;
+}
+
+// returns count after adding
+int AtomicRefCount::Add() {
+    return (int)InterlockedIncrement(&val);
+}
+
+int AtomicRefCount::Dec() {
+    auto res = InterlockedDecrement(&val);
+    return res;
+}
+
+void BreakIfUnderDebugger() {
+    if (IsDebuggerPresent()) {
+        DebugBreak();
+    }
+}
 
 void* Allocator::Alloc(Allocator* a, size_t size) {
     if (!a) {
@@ -30,9 +88,9 @@ void Allocator::Free(Allocator* a, void* p) {
     }
     if (!a) {
         free(p);
-    } else {
-        a->Free(p);
+        return;
     }
+    a->Free(p);
 }
 
 void* Allocator::Realloc(Allocator* a, void* mem, size_t size) {
@@ -60,11 +118,7 @@ void* Allocator::MemDup(Allocator* a, const void* mem, size_t size, size_t extra
 // using the same alignment as windows, to be safe
 // TODO: could use the same alignment everywhere but would have to
 // align start of the Block, couldn't just start at malloc() address
-#if IS_32BIT
-constexpr size_t kPoolAllocatorAlign = 8;
-#else
-constexpr size_t kPoolAllocatorAlign = 16;
-#endif
+constexpr size_t kPoolAllocatorAlign = sizeof(char*) * 2;
 
 PoolAllocator::PoolAllocator() {
     InitializeCriticalSection(&cs);
@@ -103,7 +157,7 @@ static void PoisonData(PoolAllocator::Block* curr) {
             d = (char*)curr + hdrSize;
             // the buffer is big so optimize to only poison the data
             // allocated in this block
-            CrashIf(d > curr->freeSpace);
+            ReportIf(d > curr->freeSpace);
             size_t n = (curr->freeSpace - d);
             const char* dead = "dea_";
             const char* dea0 = "dea\0";
@@ -133,7 +187,7 @@ static void ResetBlock(PoolAllocator::Block* block) {
     block->freeSpace = start + hdrSize;
     block->end = start + block->dataSize;
     block->next = nullptr;
-    CrashIf(RoundUp(block->freeSpace, kPoolAllocatorAlign) != block->freeSpace);
+    ReportIf(RoundUp(block->freeSpace, kPoolAllocatorAlign) != block->freeSpace);
 }
 
 void PoolAllocator::Reset(bool poisonFreedMemory) {
@@ -143,7 +197,7 @@ void PoolAllocator::Reset(bool poisonFreedMemory) {
     // with more effort we could preserve all blocks (not sure if worth it)
     Block* first = firstBlock;
     if (!first) {
-        CrashIf(currBlock);
+        ReportIf(currBlock);
         return;
     }
     if (poisonFreedMemory) {
@@ -171,7 +225,7 @@ void* PoolAllocator::Realloc(void*, size_t) {
 }
 
 static void printSize(const char* s, size_t size) {
-    char buf[512]{0};
+    char buf[512]{};
     str::BufFmt(buf, dimof(buf), "%s%d\n", s, (int)size);
     OutputDebugStringA(buf);
 }
@@ -189,7 +243,7 @@ void* PoolAllocator::Alloc(size_t size) {
     size_t sizeRounded = RoundUp(size, kPoolAllocatorAlign);
     size_t cbNeeded = sizeRounded + sizeof(i32);
     if (currBlock) {
-        CrashIf(currBlock->freeSpace > currBlock->end);
+        ReportIf(currBlock->freeSpace > currBlock->end);
         size_t cbAvail = (currBlock->end - currBlock->freeSpace);
         hasSpace = cbAvail >= cbNeeded;
     }
@@ -209,7 +263,7 @@ void* PoolAllocator::Alloc(size_t size) {
         block->dataSize = dataSize;
         ResetBlock(block);
         if (!firstBlock) {
-            CrashIf(currBlock);
+            ReportIf(currBlock);
             firstBlock = block;
         } else {
             currBlock->next = block;
@@ -223,9 +277,9 @@ void* PoolAllocator::Alloc(size_t size) {
         printSize("PoolAllocator: ", size);
         printSize("overshot: ", cbOvershot);
         printSize("hdrSizet: ", hdrSize);
-        CrashIf(true);
+        ReportIf(true);
     }
-    CrashIf(RoundUp(currBlock->freeSpace, kPoolAllocatorAlign) != currBlock->freeSpace);
+    ReportIf(RoundUp(currBlock->freeSpace, kPoolAllocatorAlign) != currBlock->freeSpace);
 
     char* blockStart = (char*)currBlock;
     i32 offset = (i32)(res - blockStart);
@@ -241,7 +295,7 @@ void* PoolAllocator::Alloc(size_t size) {
 void* PoolAllocator::At(int i) {
     ScopedCritSec scs(&cs);
 
-    CrashIf(i < 0 || i >= nAllocs);
+    ReportIf(i < 0 || i >= nAllocs);
     if (i < 0 || i >= nAllocs) {
         return nullptr;
     }
@@ -250,11 +304,11 @@ void* PoolAllocator::At(int i) {
         i -= (int)curr->nAllocs;
         curr = curr->next;
     }
-    CrashIf(!curr);
+    ReportIf(!curr);
     if (!curr) {
         return nullptr;
     }
-    CrashIf((size_t)i >= curr->nAllocs);
+    ReportIf((size_t)i >= curr->nAllocs);
     i32* index = (i32*)curr->end;
     // elements are in reverse
     size_t idx = curr->nAllocs - i - 1;
@@ -376,3 +430,105 @@ u32 MurmurHash2(const void* key, size_t len) {
 
     return h;
 }
+
+// variation of MurmurHash2 which deals with strings that are
+// mostly ASCII and should be treated case independently
+u32 MurmurHashWStrI(const WCHAR* str) {
+    size_t len = str::Len(str);
+    auto a = GetTempAllocator();
+    u8* data = (u8*)a->Alloc(len);
+    WCHAR c;
+    u8* dst = data;
+    while (true) {
+        c = *str++;
+        if (!c) {
+            break;
+        }
+        if (c & 0xFF80) {
+            *dst++ = 0x80;
+            continue;
+        }
+        if ('A' <= c && c <= 'Z') {
+            *dst++ = (u8)(c + 'a' - 'A');
+            continue;
+        }
+        *dst++ = (u8)c;
+    }
+    return MurmurHash2(data, len);
+}
+
+// variation of MurmurHash2 which deals with strings that are
+// mostly ASCII and should be treated case independently
+u32 MurmurHashStrI(const char* s) {
+    char* dst = str::DupTemp(s);
+    char c;
+    size_t len = 0;
+    while (*s) {
+        c = *s++;
+        len++;
+        if ('A' <= c && c <= 'Z') {
+            c = (c + 'a' - 'A');
+        }
+        *dst++ = c;
+    }
+    return MurmurHash2(dst - len, len);
+}
+
+int limitValue(int val, int min, int max) {
+    if (min > max) {
+        std::swap(min, max);
+    }
+    ReportIf(min > max);
+    if (val < min) {
+        return min;
+    }
+    if (val > max) {
+        return max;
+    }
+    return val;
+}
+
+DWORD limitValue(DWORD val, DWORD min, DWORD max) {
+    if (min > max) {
+        std::swap(min, max);
+    }
+    ReportIf(min > max);
+    if (val < min) {
+        return min;
+    }
+    if (val > max) {
+        return max;
+    }
+    return val;
+}
+
+float limitValue(float val, float min, float max) {
+    if (min > max) {
+        std::swap(min, max);
+    }
+    ReportIf(min > max);
+    if (val < min) {
+        return min;
+    }
+    if (val > max) {
+        return max;
+    }
+    return val;
+}
+
+Func0 MkFunc0Void(funcVoidPtr fn) {
+    auto res = Func0{};
+    res.fn = (void*)fn;
+    res.userData = kFuncNoArg;
+    return res;
+}
+
+#if 0
+template <typename T>
+Func0 MkMethod0Void(funcVoidPtr fn, T* self) {
+    UINT_PTR fnTagged = (UINT_PTR)fn;
+    res.fn = (void*)fn;
+    res.userData = kFuncNoArg;
+    res.self = self;
+}
+#endif

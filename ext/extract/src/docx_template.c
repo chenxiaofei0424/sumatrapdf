@@ -21,7 +21,7 @@ const docx_template_item_t docx_template_items[] =
                 "<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>"
                 "<Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/></Types>"
     },
-    
+
     {
         "_rels/.rels",
         ""
@@ -32,7 +32,7 @@ const docx_template_item_t docx_template_items[] =
                 "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/>"
                 "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/></Relationships>"
     },
-    
+
     {
         "docProps/app.xml",
         ""
@@ -56,7 +56,7 @@ const docx_template_item_t docx_template_items[] =
                 "<HyperlinksChanged>false</HyperlinksChanged>"
                 "<AppVersion>16.0000</AppVersion></Properties>"
     },
-    
+
     {
         "docProps/core.xml",
         ""
@@ -73,7 +73,7 @@ const docx_template_item_t docx_template_items[] =
                 "<dcterms:created xsi:type=\"dcterms:W3CDTF\">2020-09-25T17:04:00Z</dcterms:created>"
                 "<dcterms:modified xsi:type=\"dcterms:W3CDTF\">2020-09-25T17:07:00Z</dcterms:modified></cp:coreProperties>"
     },
-    
+
     {
         "word/document.xml",
         ""
@@ -155,7 +155,7 @@ const docx_template_item_t docx_template_items[] =
                 "<w:cols w:space=\"708\"/>"
                 "<w:docGrid w:linePitch=\"360\"/></w:sectPr></w:body></w:document>"
     },
-    
+
     {
         "word/fontTable.xml",
         ""
@@ -181,7 +181,7 @@ const docx_template_item_t docx_template_items[] =
                 "<w:pitch w:val=\"variable\"/>"
                 "<w:sig w:usb0=\"E4002EFF\" w:usb1=\"C000247B\" w:usb2=\"00000009\" w:usb3=\"00000000\" w:csb0=\"000001FF\" w:csb1=\"00000000\"/></w:font></w:fonts>"
     },
-    
+
     {
         "word/settings.xml",
         ""
@@ -227,7 +227,7 @@ const docx_template_item_t docx_template_items[] =
                 "<w15:chartTrackingRefBased/>"
                 "<w15:docId w15:val=\"{A10F59F7-497D-44D4-A338-47719734E7A0}\"/></w:settings>"
     },
-    
+
     {
         "word/styles.xml",
         ""
@@ -647,7 +647,7 @@ const docx_template_item_t docx_template_items[] =
                 "<w:semiHidden/>"
                 "<w:unhideWhenUsed/></w:style></w:styles>"
     },
-    
+
     {
         "word/webSettings.xml",
         ""
@@ -657,7 +657,7 @@ const docx_template_item_t docx_template_items[] =
                 "<w:optimizeForBrowser/>"
                 "<w:allowPNG/></w:webSettings>"
     },
-    
+
     {
         "word/_rels/document.xml.rels",
         ""
@@ -670,7 +670,7 @@ const docx_template_item_t docx_template_items[] =
                 "<Relationship Id=\"rId5\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme\" Target=\"theme/theme1.xml\"/>"
                 "<Relationship Id=\"rId4\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable\" Target=\"fontTable.xml\"/></Relationships>"
     },
-    
+
     {
         "word/theme/theme1.xml",
         ""
@@ -708,10 +708,10 @@ const docx_template_item_t docx_template_items[] =
                 "<a:latin typeface=\"Calibri Light\" panose=\"020F0302020204030204\"/>"
                 "<a:ea typeface=\"\"/>"
                 "<a:cs typeface=\"\"/>"
-                "<a:font script=\"Jpan\" typeface=\"游ゴシック Light\"/>"
-                "<a:font script=\"Hang\" typeface=\"맑은 고딕\"/>"
-                "<a:font script=\"Hans\" typeface=\"等线 Light\"/>"
-                "<a:font script=\"Hant\" typeface=\"新細明體\"/>"
+                "<a:font script=\"Jpan\" typeface=\"\xe6\xb8\xb8\xe3\x82\xb4\xe3\x82\xb7\xe3\x83\x83\xe3\x82\xaf Light\"/>"
+                "<a:font script=\"Hang\" typeface=\"\xeb\xa7\x91\xec\x9d\x80 \xea\xb3\xa0\xeb\x94\x95\"/>"
+                "<a:font script=\"Hans\" typeface=\"\xe7\xad\x89\xe7\xba\xbf Light\"/>"
+                "<a:font script=\"Hant\" typeface=\"\xe6\x96\xb0\xe7\xb4\xb0\xe6\x98\x8e\xe9\xab\x94\"/>"
                 "<a:font script=\"Arab\" typeface=\"Times New Roman\"/>"
                 "<a:font script=\"Hebr\" typeface=\"Times New Roman\"/>"
                 "<a:font script=\"Thai\" typeface=\"Angsana New\"/>"
@@ -759,10 +759,10 @@ const docx_template_item_t docx_template_items[] =
                 "<a:latin typeface=\"Calibri\" panose=\"020F0502020204030204\"/>"
                 "<a:ea typeface=\"\"/>"
                 "<a:cs typeface=\"\"/>"
-                "<a:font script=\"Jpan\" typeface=\"游明朝\"/>"
-                "<a:font script=\"Hang\" typeface=\"맑은 고딕\"/>"
-                "<a:font script=\"Hans\" typeface=\"等线\"/>"
-                "<a:font script=\"Hant\" typeface=\"新細明體\"/>"
+                "<a:font script=\"Jpan\" typeface=\"\xe6\xb8\xb8\xe6\x98\x8e\xe6\x9c\x9d\"/>"
+                "<a:font script=\"Hang\" typeface=\"\xeb\xa7\x91\xec\x9d\x80 \xea\xb3\xa0\xeb\x94\x95\"/>"
+                "<a:font script=\"Hans\" typeface=\"\xe7\xad\x89\xe7\xba\xbf\"/>"
+                "<a:font script=\"Hant\" typeface=\"\xe6\x96\xb0\xe7\xb4\xb0\xe6\x98\x8e\xe9\xab\x94\"/>"
                 "<a:font script=\"Arab\" typeface=\"Arial\"/>"
                 "<a:font script=\"Hebr\" typeface=\"Arial\"/>"
                 "<a:font script=\"Thai\" typeface=\"Cordia New\"/>"
@@ -904,7 +904,7 @@ const docx_template_item_t docx_template_items[] =
                 "<a:ext uri=\"{05A4C25C-085E-4340-85A3-A5531E510DB2}\">"
                 "<thm15:themeFamily xmlns:thm15=\"http://schemas.microsoft.com/office/thememl/2012/main\" name=\"Office Theme\" id=\"{62F939B6-93AF-4DB8-9C6B-D6C7DFDC589F}\" vid=\"{4A3C46E8-61CC-4603-A589-7422A47A8E4A}\"/></a:ext></a:extLst></a:theme>"
     },
-    
+
 };
 
 int docx_template_items_num = 11;
